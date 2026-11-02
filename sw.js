@@ -1,4 +1,4 @@
-const CACHE = "mi-negocio-v1";
+const CACHE = "mi-negocio-v2";
 const ASSETS = [
   "./", "./index.html", "./catalogo.html",
   "./css/style.css",
@@ -24,7 +24,7 @@ self.addEventListener("fetch", (e) => {
   const url = new URL(req.url);
 
   // Librerías externas: primero caché, luego red
-  if (url.hostname === "esm.sh") {
+  if (url.hostname === "esm.sh" || url.hostname === "cdnjs.cloudflare.com") {
     e.respondWith(
       caches.match(req).then((hit) => hit || fetch(req).then((res) => {
         const copy = res.clone();

@@ -284,3 +284,7 @@ dialog .dlg-body { padding: 14px 16px calc(16px + env(safe-area-inset-bottom)); 
 .public .toast { bottom: 90px; }
 code { background: var(--bg); padding: 2px 6px; border-radius: 6px; font-size: 13px; word-break: break-all; }
 .link-box { background: var(--bg); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
+.link-box .row { flex-wrap: wrap; }
+.link-box .btns { display: flex; gap: 6px; }
+.qr-box { display: inline-block; background: #fff; padding: 16px; border-radius: 14px; border: 1px solid var(--line); margin: 6px auto 10px; }
+.qr-box img, .qr-box canvas { display: block; }

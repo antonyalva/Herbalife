@@ -629,9 +629,13 @@ function renderSettings() {
       ${levels().map((d) => `<div class="link-box">
         <div class="row between">
           <div class="grow"><div class="bold">${d === 0 ? "Precio público" : d + "% de descuento"}</div><div class="muted small ellipsis">${esc(catalogUrl(d))}</div></div>
-          <button class="btn sm" data-copy="${d}">Copiar</button>
-          <button class="btn sm primary" data-share="${d}">Enviar</button>
+          <div class="btns">
+            <button class="btn sm" data-copy="${d}">Copiar</button>
+            <button class="btn sm" data-qr="${d}">QR</button>
+            <button class="btn sm primary" data-share="${d}">Enviar</button>
+          </div>
         </div></div>`).join("")}
+      <p class="muted small mt">Consejo: comparte públicamente solo el enlace de precio público; los de descuento envíalos a cada cliente por separado.</p>
       <a class="btn block mt" href="${esc(catalogUrl(0))}" target="_blank">Ver catálogo como cliente</a>
     </div>
 
@@ -659,7 +663,64 @@ function renderSettings() {
     if (navigator.share) { try { await navigator.share({ text }); } catch {} }
     else window.open(waLink("", text), "_blank");
   }));
+  $$("[data-qr]").forEach((b) => b.addEventListener("click", () => openQr(+b.dataset.qr)));
   $("#btnLogout").addEventListener("click", async () => { await supabase.auth.signOut(); showLogin(); });
 }
+
+// ---- Código QR ----
+let qrLevel = 0;
+function qrLabel(d) { return d === 0 ? "Precio público" : d + "% de descuento"; }
+
+function openQr(d) {
+  if (!window.QRCode) { toast("El generador de QR aún no cargó. Revisa tu internet e intenta de nuevo."); return; }
+  qrLevel = d;
+  const url = catalogUrl(d);
+  $("#dlgQrTitle").textContent = "QR · " + qrLabel(d);
+  $("#qrUrl").textContent = url;
+  const box = $("#qrBox"); box.innerHTML = "";
+  new QRCode(box, { text: url, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M });
+  $("#dlgQr").showModal();
+}
+
+/** Imagen lista para imprimir: QR + nombre del negocio + nivel + enlace */
+function qrImageBlob() {
+  return new Promise((resolve) => {
+    const src = $("#qrBox canvas") || $("#qrBox img");
+    const size = 900, pad = 70, qrSize = 560;
+    const c = document.createElement("canvas"); c.width = size; c.height = size + 120;
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
+    ctx.fillStyle = "#1a7f4b"; ctx.font = "bold 44px system-ui, sans-serif"; ctx.textAlign = "center";
+    ctx.fillText(state.settings.business_name || "Catálogo", size / 2, pad + 10);
+    ctx.fillStyle = "#1c2420"; ctx.font = "30px system-ui, sans-serif";
+    ctx.fillText("Catálogo · " + qrLabel(qrLevel), size / 2, pad + 60);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(src, (size - qrSize) / 2, pad + 100, qrSize, qrSize);
+    ctx.fillStyle = "#6b766f"; ctx.font = "26px system-ui, sans-serif";
+    ctx.fillText("Escanea o entra a:", size / 2, pad + 100 + qrSize + 60);
+    ctx.fillStyle = "#1c2420"; ctx.font = "bold 28px system-ui, sans-serif";
+    ctx.fillText(catalogUrl(qrLevel).replace(/^https?:\/\//, ""), size / 2, pad + 100 + qrSize + 105);
+    c.toBlob(resolve, "image/png");
+  });
+}
+
+$("#btnQrDownload").addEventListener("click", async () => {
+  const blob = await qrImageBlob();
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = `qr-catalogo-${qrLevel}.png`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  toast("Imagen descargada");
+});
+
+$("#btnQrShare").addEventListener("click", async () => {
+  const blob = await qrImageBlob();
+  const file = new File([blob], `qr-catalogo-${qrLevel}.png`, { type: "image/png" });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], text: `Mi catálogo: ${catalogUrl(qrLevel)}` }); } catch {}
+  } else {
+    toast("Tu navegador no permite compartir imágenes; usa Descargar.");
+  }
+});
 
 init();
