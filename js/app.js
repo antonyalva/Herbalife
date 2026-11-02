@@ -38,13 +38,57 @@ async function init() {
 
   try {
     const { data: { session } } = await supabase.auth.getSession();
-    if (session) await enterApp(); else showLogin();
+    if (session && lockExpired()) await lock();
+    else if (session) await enterApp();
+    else showLogin();
   } finally { hideSplash(); }
 
-  supabase.auth.onAuthStateChange((_event, s) => { if (!s) showLogin(); });
+  supabase.auth.onAuthStateChange((_event, s) => { if (!s) showLogin(locking); });
 
-  // Al volver a la app (p. ej. después de WhatsApp) se recargan los datos: así aparecen los pedidos del catálogo
-  document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
+  // Al volver a la app (p. ej. después de WhatsApp): si pasó mucho tiempo se pide la contraseña; si no, se recargan los datos
+  document.addEventListener("visibilitychange", async () => {
+    if (document.hidden) { touchActivity(); return; }
+    if (await lockIfExpired()) return;
+    refresh();
+  });
+  ["pointerdown", "keydown", "scroll"].forEach((ev) => document.addEventListener(ev, touchActivity, { passive: true, capture: true }));
+  setInterval(() => { if (!document.hidden) lockIfExpired(); }, 15000);
+}
+
+// ---------- bloqueo automático (la app guarda costos, pagos y clientes) ----------
+const LOCK_DEFAULT = 5; // minutos sin usar la app antes de pedir la contraseña de nuevo
+let lastTouch = 0;
+function lockMinutes() {
+  try { const v = localStorage.getItem("lockMinutes"); return v == null ? LOCK_DEFAULT : Number(v); } catch { return LOCK_DEFAULT; }
+}
+function touchActivity() {
+  const now = Date.now();
+  if (now - lastTouch < 5000) return; // no escribir en cada toque
+  lastTouch = now;
+  try { localStorage.setItem("lastActive", String(now)); } catch {}
+}
+function lockExpired() {
+  const min = lockMinutes();
+  if (min <= 0) return false; // "Nunca"
+  let last = 0;
+  try { last = Number(localStorage.getItem("lastActive")) || 0; } catch {}
+  return Date.now() - last > min * 60000;
+}
+let locking = false;
+async function lock() {
+  if (locking) return; locking = true;
+  try {
+    $$("dialog[open]").forEach((d) => d.close());
+    state.orders = []; state.customers = []; state.products = []; state.draft = null;
+    $("#view").innerHTML = "";
+    try { await supabase.auth.signOut({ scope: "local" }); } catch {}
+    showLogin(true);
+  } finally { locking = false; }
+}
+async function lockIfExpired() {
+  if ($("#app").classList.contains("hidden") || !lockExpired()) return false;
+  await lock();
+  return true;
 }
 
 let refreshing = false;
@@ -56,10 +100,29 @@ async function refresh() {
 }
 $("#btnRefresh").addEventListener("click", async () => { await refresh(); toast("Actualizado"); });
 
-function showLogin() {
+// locked=true: la sesión se cerró por inactividad; solo se pide la contraseña (el correo queda recordado)
+function showLogin(locked = false) {
   $("#app").classList.add("hidden");
   $("#login").classList.remove("hidden");
+  const f = $("#loginForm");
+  let email = "";
+  try { email = localStorage.getItem("lastEmail") || ""; } catch {}
+  const lockMode = locked && !!email;
+  $("#loginTitle").textContent = lockMode ? "🔒 Bloqueado" : "Hola de nuevo 👋";
+  $("#loginSub").textContent = lockMode ? `Por seguridad, ingresa la contraseña de ${email} para continuar` : "Ingresa para gestionar tu negocio";
+  f.email.value = email;
+  f.email.readOnly = lockMode;
+  f.email.closest("label").classList.toggle("hidden", lockMode);
+  f.password.value = "";
+  $("#btnLogin").textContent = lockMode ? "Desbloquear" : "Entrar";
+  $("#btnOtherAccount").classList.toggle("hidden", !lockMode);
+  $("#loginError").textContent = "";
+  setTimeout(() => (lockMode || email ? f.password : f.email).focus(), 50);
 }
+$("#btnOtherAccount").addEventListener("click", () => {
+  try { localStorage.removeItem("lastEmail"); } catch {}
+  showLogin(false);
+});
 
 $("#togglePw").addEventListener("click", (e) => {
   const inp = $("#loginForm [name=password]");
@@ -76,10 +139,13 @@ $("#loginForm").addEventListener("submit", async (e) => {
   const f = e.target;
   const btn = $("button[type=submit]", f);
   btn.disabled = true; $("#loginError").textContent = "";
-  const { error } = await supabase.auth.signInWithPassword({ email: f.email.value.trim(), password: f.password.value });
+  const email = f.email.value.trim();
+  const { error } = await supabase.auth.signInWithPassword({ email, password: f.password.value });
   btn.disabled = false;
   if (error) { $("#loginError").textContent = "Correo o contraseña incorrectos."; return; }
   f.reset();
+  try { localStorage.setItem("lastEmail", email); localStorage.setItem("lastActive", String(Date.now())); } catch {}
+  lastTouch = Date.now();
   await enterApp();
 });
 
@@ -698,6 +764,16 @@ function renderSettings() {
     </div>
 
     <div class="card">
+      <h2 style="font-size:16px" class="mb">🔒 Seguridad</h2>
+      <label><span>Pedir contraseña si no uso la app durante</span>
+        <select id="lockMinutes">
+          ${[[1, "1 minuto"], [5, "5 minutos"], [15, "15 minutos"], [30, "30 minutos"], [60, "1 hora"], [0, "Nunca"]].map(([v, t]) => `<option value="${v}" ${v === lockMinutes() ? "selected" : ""}>${t}</option>`).join("")}
+        </select>
+      </label>
+      <p class="muted small">La app guarda costos, pagos y datos de clientes. Al pasar ese tiempo sin usarla (o con el celular bloqueado), se cierra la sesión y solo te pide la contraseña para continuar.</p>
+    </div>
+
+    <div class="card">
       <p class="muted mb">Sesión iniciada.</p>
       <button class="btn danger block" id="btnLogout">Cerrar sesión</button>
     </div>`;
@@ -725,6 +801,11 @@ function renderSettings() {
     else window.open(waLink("", text), "_blank");
   }));
   $$("[data-qr]").forEach((b) => b.addEventListener("click", () => openQr(+b.dataset.qr)));
+  $("#lockMinutes").addEventListener("change", (e) => {
+    try { localStorage.setItem("lockMinutes", e.target.value); } catch {}
+    touchActivity();
+    toast(Number(e.target.value) > 0 ? "Bloqueo automático activado" : "Bloqueo automático desactivado");
+  });
   $("#btnLogout").addEventListener("click", async () => { await supabase.auth.signOut(); showLogin(); });
 }
 

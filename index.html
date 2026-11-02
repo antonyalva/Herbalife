@@ -42,8 +42,8 @@
   <form id="loginForm" class="login-card" autocomplete="on">
     <div class="brand">
       <div class="logo-ring"><img src="icons/leaf.svg" alt=""></div>
-      <h1>Hola de nuevo 👋</h1>
-      <p class="muted">Ingresa para gestionar tu negocio</p>
+      <h1 id="loginTitle">Hola de nuevo 👋</h1>
+      <p class="muted" id="loginSub">Ingresa para gestionar tu negocio</p>
     </div>
     <label><span>Correo</span><input type="email" name="email" required autocomplete="username" placeholder="tu@correo.com"></label>
     <label><span>Contraseña</span>
@@ -53,7 +53,8 @@
       </div>
     </label>
     <p class="error" id="loginError"></p>
-    <button class="btn primary block" type="submit">Entrar</button>
+    <button class="btn primary block" type="submit" id="btnLogin">Entrar</button>
+    <button class="btn ghost block hidden" type="button" id="btnOtherAccount" style="margin-top:8px">Entrar con otra cuenta</button>
   </form>
 </div>
 
