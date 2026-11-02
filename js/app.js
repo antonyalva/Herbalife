@@ -171,6 +171,8 @@ function renderOrders() {
   $$("[data-order]", $("#view")).forEach((c) => c.addEventListener("click", () => openOrderDetail(c.dataset.order)));
 }
 
+const referrerName = (o) => o.referred_by ? (state.customers.find((c) => c.id === o.referred_by)?.name || "cliente eliminado") : "";
+
 function orderCard(o) {
   const n = o.order_items.reduce((a, i) => a + i.qty, 0);
   return `<div class="card tap" data-order="${o.id}">
@@ -178,6 +180,7 @@ function orderCard(o) {
       <div class="grow">
         <div class="bold ellipsis">${o.number ? `<span class="muted">#${o.number}</span> ` : ""}${esc(o.customer_name || "Sin cliente")}</div>
         <div class="muted">${fmtDate(o.created_at)} · ${n} producto${n === 1 ? "" : "s"} · ${o.discount_pct}% dto.${o.source === "catalogo" ? ' · <span class="badge catalogo">Catálogo</span>' : ""}</div>
+        ${o.referred_by ? `<div class="muted small">🔗 Referido por ${esc(referrerName(o))}</div>` : ""}
       </div>
       <div class="right">
         <div class="price">${fmt(o.total)}</div>
@@ -306,6 +309,7 @@ function openOrderDetail(id) {
         <div class="bold" style="font-size:17px">${o.number ? `<span class="muted">#${o.number}</span> ` : ""}${esc(o.customer_name || "Sin cliente")}</div>
         <div class="muted">${fmtDate(o.created_at)} · ${o.discount_pct}% dto.${o.source === "catalogo" ? ' · <span class="badge catalogo">Catálogo</span>' : ""}</div>
         ${phone ? `<div class="muted">📱 ${esc(phone)}</div>` : ""}
+        ${o.referred_by ? `<div class="muted">🔗 Referido por <b>${esc(referrerName(o))}</b></div>` : ""}
       </div>
       <span class="badge ${o.status}">${STATUS_LABEL[o.status]}</span>
     </div>
@@ -365,12 +369,13 @@ function renderCustomers() {
   const list = state.customers.filter((c) => !q || norm(c.name).includes(q) || c.phone.includes(q));
   const pending = {};
   for (const o of state.orders) if (o.status === "pendiente" || o.status === "entregado") pending[o.customer_id] = (pending[o.customer_id] || 0) + o.total;
+  const refs = referralStats();
 
   $("#view").innerHTML = `
     <input type="search" class="search" id="searchCustomers" placeholder="Buscar cliente…" value="${esc(state.search.clientes)}">
     ${list.length ? list.map((c) => `<div class="card tap" data-customer="${c.id}">
       <div class="row between">
-        <div class="grow"><div class="bold ellipsis">${esc(c.name)}</div><div class="muted">${esc(c.phone) || "Sin teléfono"}</div></div>
+        <div class="grow"><div class="bold ellipsis">${esc(c.name)}</div><div class="muted">${esc(c.phone) || "Sin teléfono"}${refs[c.id] ? ` · 🔗 Trajo ${refs[c.id].n} pedido${refs[c.id].n === 1 ? "" : "s"} (${fmt(refs[c.id].total)})` : ""}</div></div>
         <div class="right"><span class="badge">${c.discount_pct}% dto.</span>
           ${pending[c.id] ? `<div class="small mt" style="margin-top:4px;color:var(--warn)">Debe ${fmt(pending[c.id])}</div>` : ""}</div>
       </div></div>`).join("")
@@ -381,17 +386,40 @@ function renderCustomers() {
   $$("[data-customer]", $("#view")).forEach((c) => c.addEventListener("click", () => openCustomerDialog(c.dataset.customer)));
 }
 
+/** Pedidos traídos por cada cliente a través de su enlace (sin los cancelados) */
+function referralStats() {
+  const refs = {};
+  for (const o of state.orders) if (o.referred_by && o.status !== "cancelado") {
+    refs[o.referred_by] = refs[o.referred_by] || { n: 0, total: 0 };
+    refs[o.referred_by].n++; refs[o.referred_by].total = round2(refs[o.referred_by].total + o.total);
+  }
+  return refs;
+}
+function refUrl(c) {
+  const u = new URL("catalogo.html", location.href);
+  u.searchParams.set("ref", c.ref_code);
+  return u.href;
+}
+
 let customerDialogFromOrder = false;
+let currentCustomer = null;
 function openCustomerDialog(id, fromOrder = false) {
   customerDialogFromOrder = fromOrder;
   const f = $("#formCustomer");
   const c = id ? state.customers.find((x) => x.id === id) : null;
+  currentCustomer = c;
   f.reset();
   f.id.value = c?.id || "";
   f.name.value = c?.name || "";
   f.phone.value = c?.phone || "";
   f.notes.value = c?.notes || "";
   fillDiscountSelect($("#customerDiscount"), c ? c.discount_pct : levels()[0]);
+  $("#customerRef").classList.toggle("hidden", !(c && c.ref_code));
+  if (c && c.ref_code) {
+    const st = referralStats()[c.id];
+    $("#customerRefUrl").textContent = refUrl(c);
+    $("#customerRefStats").textContent = st ? `Ha traído ${st.n} pedido${st.n === 1 ? "" : "s"} por ${fmt(st.total)}.` : "Aún no ha traído pedidos.";
+  }
   $("#dlgCustomerTitle").textContent = c ? "Editar cliente" : "Nuevo cliente";
   $("#btnDeleteCustomer").classList.toggle("hidden", !c);
   $("#customerError").textContent = "";
@@ -425,6 +453,20 @@ $("#formCustomer").addEventListener("submit", async (e) => {
     if (state.view === "clientes") renderCustomers();
   } catch (ex) { err.textContent = "No se pudo guardar: " + ex.message; }
   $("#btnSaveCustomer").disabled = false;
+});
+
+$("#btnRefCopy").addEventListener("click", async () => {
+  const url = refUrl(currentCustomer);
+  try { await navigator.clipboard.writeText(url); toast("Enlace copiado"); } catch { prompt("Copia el enlace:", url); }
+});
+$("#btnRefQr").addEventListener("click", () => {
+  const c = currentCustomer;
+  openQrFor({ url: refUrl(c), title: "QR · " + c.name, subtitle: "Enlace de " + c.name, file: `qr-${c.ref_code}` });
+});
+$("#btnRefSend").addEventListener("click", () => {
+  const c = currentCustomer;
+  const msg = `Hola ${c.name} 😊 Este es tu enlace personal de mi catálogo para que lo compartas con tus amigos y familia:\n${refUrl(c)}\nCada pedido que llegue por tu enlace queda registrado a tu nombre. ¡Gracias por recomendarme!`;
+  window.open(waLink(c.phone, msg), "_blank");
 });
 
 $("#btnDeleteCustomer").addEventListener("click", async () => {
@@ -636,6 +678,7 @@ function renderSettings() {
           </div>
         </div></div>`).join("")}
       <p class="muted small mt">Consejo: comparte públicamente solo el enlace de precio público; los de descuento envíalos a cada cliente por separado.</p>
+      <p class="muted small">🔗 Cada cliente tiene además su <b>enlace personal para recomendar</b> (en su ficha, pestaña Clientes). Los pedidos que lleguen por ese enlace aparecen como "Referido por …" y en su ficha ves cuánto ha traído, para que decidas su premio.</p>
       <a class="btn block mt" href="${esc(catalogUrl(0))}" target="_blank">Ver catálogo como cliente</a>
     </div>
 
@@ -668,17 +711,19 @@ function renderSettings() {
 }
 
 // ---- Código QR ----
-let qrLevel = 0;
+let qr = null; // { url, title, subtitle, file }
 function qrLabel(d) { return d === 0 ? "Precio público" : d + "% de descuento"; }
 
 function openQr(d) {
+  openQrFor({ url: catalogUrl(d), title: "QR · " + qrLabel(d), subtitle: "Catálogo · " + qrLabel(d), file: `qr-catalogo-${d}` });
+}
+function openQrFor(opts) {
   if (!window.QRCode) { toast("El generador de QR aún no cargó. Revisa tu internet e intenta de nuevo."); return; }
-  qrLevel = d;
-  const url = catalogUrl(d);
-  $("#dlgQrTitle").textContent = "QR · " + qrLabel(d);
-  $("#qrUrl").textContent = url;
+  qr = opts;
+  $("#dlgQrTitle").textContent = opts.title;
+  $("#qrUrl").textContent = opts.url;
   const box = $("#qrBox"); box.innerHTML = "";
-  new QRCode(box, { text: url, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M });
+  new QRCode(box, { text: opts.url, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M });
   $("#dlgQr").showModal();
 }
 
@@ -693,13 +738,13 @@ function qrImageBlob() {
     ctx.fillStyle = "#1a7f4b"; ctx.font = "bold 44px system-ui, sans-serif"; ctx.textAlign = "center";
     ctx.fillText(state.settings.business_name || "Catálogo", size / 2, pad + 10);
     ctx.fillStyle = "#1c2420"; ctx.font = "30px system-ui, sans-serif";
-    ctx.fillText("Catálogo · " + qrLabel(qrLevel), size / 2, pad + 60);
+    ctx.fillText(qr.subtitle, size / 2, pad + 60);
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(src, (size - qrSize) / 2, pad + 100, qrSize, qrSize);
     ctx.fillStyle = "#6b766f"; ctx.font = "26px system-ui, sans-serif";
     ctx.fillText("Escanea o entra a:", size / 2, pad + 100 + qrSize + 60);
     ctx.fillStyle = "#1c2420"; ctx.font = "bold 28px system-ui, sans-serif";
-    ctx.fillText(catalogUrl(qrLevel).replace(/^https?:\/\//, ""), size / 2, pad + 100 + qrSize + 105);
+    ctx.fillText(qr.url.replace(/^https?:\/\//, ""), size / 2, pad + 100 + qrSize + 105);
     c.toBlob(resolve, "image/png");
   });
 }
@@ -707,7 +752,7 @@ function qrImageBlob() {
 $("#btnQrDownload").addEventListener("click", async () => {
   const blob = await qrImageBlob();
   const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob); a.download = `qr-catalogo-${qrLevel}.png`;
+  a.href = URL.createObjectURL(blob); a.download = `${qr.file}.png`;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   toast("Imagen descargada");
@@ -715,9 +760,9 @@ $("#btnQrDownload").addEventListener("click", async () => {
 
 $("#btnQrShare").addEventListener("click", async () => {
   const blob = await qrImageBlob();
-  const file = new File([blob], `qr-catalogo-${qrLevel}.png`, { type: "image/png" });
+  const file = new File([blob], `${qr.file}.png`, { type: "image/png" });
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    try { await navigator.share({ files: [file], text: `Mi catálogo: ${catalogUrl(qrLevel)}` }); } catch {}
+    try { await navigator.share({ files: [file], text: qr.url }); } catch {}
   } else {
     toast("Tu navegador no permite compartir imágenes; usa Descargar.");
   }

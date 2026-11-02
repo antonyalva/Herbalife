@@ -7,6 +7,10 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const norm = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 
 let settings = null, products = [], discount = 0, category = "", query = "";
+
+// Código de referido (?ref=CODIGO): se recuerda en este dispositivo para que el cliente que compartió reciba el crédito
+let ref = new URLSearchParams(location.search).get("ref") || "";
+try { if (ref) localStorage.setItem("ref", ref); else ref = localStorage.getItem("ref") || ""; } catch {}
 const cart = new Map(); // product_id -> qty
 
 $$("dialog [data-close]").forEach((b) => b.addEventListener("click", () => b.closest("dialog").close()));
@@ -164,6 +168,7 @@ $("#btnSend").addEventListener("click", async () => {
   const { data, error } = await supabase.rpc("crear_pedido_catalogo", {
     p_nombre: name, p_telefono: phone, p_nota: note, p_descuento: discount,
     p_items: items.map((i) => ({ product_id: i.id, qty: i.qty })),
+    p_ref: ref || null,
   });
   if (error) console.error("No se pudo registrar el pedido:", error.message);
   else number = data;

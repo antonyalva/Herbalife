@@ -92,6 +92,16 @@
     <label><span>Teléfono / WhatsApp</span><input type="tel" name="phone" inputmode="tel" placeholder="999 999 999"></label>
     <label><span>Descuento que le ofreces</span><select name="discount_pct" id="customerDiscount"></select></label>
     <label><span>Notas</span><textarea name="notes" placeholder="Dirección, preferencias, etc."></textarea></label>
+    <div id="customerRef" class="link-box hidden">
+      <div class="bold">🔗 Su enlace para recomendar</div>
+      <div class="muted small ellipsis" id="customerRefUrl"></div>
+      <div class="muted small" id="customerRefStats" style="margin:4px 0 8px"></div>
+      <div class="btns">
+        <button type="button" class="btn sm" id="btnRefCopy">Copiar</button>
+        <button type="button" class="btn sm" id="btnRefQr">QR</button>
+        <button type="button" class="btn sm primary" id="btnRefSend">Enviárselo</button>
+      </div>
+    </div>
     <p class="error" id="customerError"></p>
     <div class="actions">
       <button type="button" class="btn danger hidden" id="btnDeleteCustomer">Eliminar</button>

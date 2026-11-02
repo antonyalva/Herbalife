@@ -38,6 +38,7 @@ create table if not exists public.customers (
   phone text not null default '',
   discount_pct int not null default 20 check (discount_pct between 0 and 100),
   notes text not null default '',
+  ref_code text not null unique default substr(md5(gen_random_uuid()::text), 1, 6),  -- enlace personal: catalogo.html?ref=CODIGO
   created_at timestamptz not null default now()
 );
 
@@ -49,6 +50,7 @@ create table if not exists public.orders (
   customer_name text not null default '',
   customer_phone text not null default '',                   -- teléfono cuando el pedido viene del catálogo
   source text not null default 'app' check (source in ('app', 'catalogo')),
+  referred_by uuid references public.customers(id) on delete set null,   -- cliente que compartió su enlace
   discount_pct int not null default 0,
   status text not null default 'pendiente'
     check (status in ('pendiente','entregado','pagado','cancelado')),
@@ -120,11 +122,11 @@ create policy "dueno order_items" on public.order_items
 -- El catálogo no inserta directamente: llama a esta función, que valida y
 -- recalcula precios y costos en el servidor y crea el pedido como "pendiente".
 create or replace function public.crear_pedido_catalogo(
-  p_nombre text, p_telefono text, p_nota text, p_descuento int, p_items jsonb
+  p_nombre text, p_telefono text, p_nota text, p_descuento int, p_items jsonb, p_ref text default null
 ) returns bigint
 language plpgsql security definer set search_path = public as $$
 declare
-  v_levels int[]; v_cost_pct int; v_d int;
+  v_levels int[]; v_cost_pct int; v_d int; v_ref uuid;
   v_order_id uuid; v_number bigint;
   v_total numeric := 0; v_cost numeric := 0;
   it jsonb; v_p products%rowtype; v_qty int; v_price numeric; v_cost_u numeric;
@@ -138,8 +140,12 @@ begin
   select discount_levels, cost_discount_pct into v_levels, v_cost_pct from settings where id = 1;
   v_d := case when p_descuento = any(v_levels) then p_descuento else 0 end;
 
-  insert into orders (customer_name, customer_phone, discount_pct, note, source, status)
-  values (left(trim(p_nombre), 80), left(coalesce(p_telefono, ''), 30), v_d, left(coalesce(p_nota, ''), 300), 'catalogo', 'pendiente')
+  if p_ref is not null and length(trim(p_ref)) > 0 then
+    select id into v_ref from customers where ref_code = lower(trim(p_ref));
+  end if;
+
+  insert into orders (customer_name, customer_phone, discount_pct, note, source, status, referred_by)
+  values (left(trim(p_nombre), 80), left(coalesce(p_telefono, ''), 30), v_d, left(coalesce(p_nota, ''), 300), 'catalogo', 'pendiente', v_ref)
   returning id, number into v_order_id, v_number;
 
   for it in select * from jsonb_array_elements(p_items) loop
@@ -162,8 +168,8 @@ begin
   return v_number;
 end $$;
 
-revoke all on function public.crear_pedido_catalogo(text, text, text, int, jsonb) from public;
-grant execute on function public.crear_pedido_catalogo(text, text, text, int, jsonb) to anon, authenticated;
+revoke all on function public.crear_pedido_catalogo(text, text, text, int, jsonb, text) from public;
+grant execute on function public.crear_pedido_catalogo(text, text, text, int, jsonb, text) to anon, authenticated;
 
 -- ---------- Fotos de productos (Storage) ----------
 insert into storage.buckets (id, name, public)
