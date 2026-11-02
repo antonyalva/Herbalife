@@ -45,6 +45,16 @@ function showLogin() {
   $("#login").classList.remove("hidden");
 }
 
+$("#togglePw").addEventListener("click", (e) => {
+  const inp = $("#loginForm [name=password]");
+  const show = inp.type === "password";
+  inp.type = show ? "text" : "password";
+  e.currentTarget.textContent = show ? "🙈" : "👁️";
+  e.currentTarget.setAttribute("aria-pressed", String(show));
+  e.currentTarget.setAttribute("aria-label", show ? "Ocultar contraseña" : "Mostrar contraseña");
+  inp.focus();
+});
+
 $("#loginForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const f = e.target;
