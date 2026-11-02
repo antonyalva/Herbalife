@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Catálogo</title>
+  <meta name="theme-color" content="#1a7f4b">
+  <link rel="icon" href="icons/icon.svg">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="public">
+  <header class="topbar">
+    <div><h1 id="title">Catálogo</h1><div class="sub" id="subtitle">Cargando…</div></div>
+  </header>
+  <main>
+    <input type="search" class="search" id="search" placeholder="Buscar producto…">
+    <div class="chips" id="categories"></div>
+    <div class="grid" id="grid"></div>
+    <div class="empty hidden" id="empty"><div class="big">📦</div>No hay productos disponibles por ahora.</div>
+  </main>
+
+  <div class="cartbar hidden" id="cartbar">
+    <div><div class="muted small" id="cartCount">0 productos</div><div class="price" id="cartTotal">S/ 0.00</div></div>
+    <button class="btn wa" id="btnCheckout">Hacer pedido</button>
+  </div>
+
+  <dialog id="dlgCheckout">
+    <div class="dlg-head"><h2>Tu pedido</h2><button class="close" data-close>✕</button></div>
+    <div class="dlg-body">
+      <div id="checkoutItems"></div>
+      <div class="totals" id="checkoutTotals"></div>
+      <label class="mt"><span>Tu nombre</span><input type="text" id="buyerName" required placeholder="¿Cómo te llamas?"></label>
+      <label><span>Nota (opcional)</span><input type="text" id="buyerNote" placeholder="Ej. sabor, dirección de entrega"></label>
+      <p class="error" id="checkoutError"></p>
+      <button class="btn wa block" id="btnSend">Enviar pedido por WhatsApp</button>
+    </div>
+  </dialog>
+
+  <div id="toast" class="toast"></div>
+  <script type="module" src="js/catalogo.js"></script>
+</body>
+</html>

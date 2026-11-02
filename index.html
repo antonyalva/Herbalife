@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Mi Negocio Herbalife</title>
+  <meta name="theme-color" content="#1a7f4b">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- Aviso de configuración pendiente -->
+<div id="setup" class="screen hidden">
+  <div class="card">
+    <div class="brand"><img src="icons/icon.svg" alt=""><h1>Falta configurar</h1></div>
+    <p class="muted">Abre el archivo <code>js/config.js</code> y pega la URL y la clave <b>anon</b> de tu proyecto Supabase. Luego vuelve a cargar esta página.</p>
+  </div>
+</div>
+
+<!-- Inicio de sesión -->
+<div id="login" class="screen hidden">
+  <form id="loginForm" class="card" autocomplete="on">
+    <div class="brand"><img src="icons/icon.svg" alt=""><h1>Mi Negocio</h1></div>
+    <label><span>Correo</span><input type="email" name="email" required autocomplete="username"></label>
+    <label><span>Contraseña</span><input type="password" name="password" required autocomplete="current-password"></label>
+    <p class="error" id="loginError"></p>
+    <button class="btn primary block" type="submit">Entrar</button>
+  </form>
+</div>
+
+<!-- App -->
+<div id="app" class="hidden">
+  <header class="topbar">
+    <div><h1 id="title">Pedidos</h1><div class="sub" id="subtitle"></div></div>
+  </header>
+  <main id="view"></main>
+  <button id="fab" class="fab" aria-label="Agregar">+</button>
+  <nav class="tabbar">
+    <button data-view="pedidos" class="active"><span class="ico">🧾</span>Pedidos</button>
+    <button data-view="clientes"><span class="ico">👥</span>Clientes</button>
+    <button data-view="productos"><span class="ico">📦</span>Productos</button>
+    <button data-view="ajustes"><span class="ico">⚙️</span>Ajustes</button>
+  </nav>
+</div>
+
+<!-- Diálogo: producto -->
+<dialog id="dlgProduct">
+  <div class="dlg-head"><h2 id="dlgProductTitle">Producto</h2><button class="close" data-close>✕</button></div>
+  <form id="formProduct" class="dlg-body">
+    <input type="hidden" name="id">
+    <label><span>Nombre</span><input type="text" name="name" required placeholder="Ej. Fórmula 1 Vainilla"></label>
+    <label><span>Categoría (opcional)</span><input type="text" name="category" placeholder="Ej. Batidos, Tés, Proteínas" list="categories"></label>
+    <datalist id="categories"></datalist>
+    <label><span>Precio público (S/)</span><input type="number" name="public_price" required min="0" step="0.01" inputmode="decimal" placeholder="238.00"></label>
+    <div id="productPricePreview" class="price-grid mb"></div>
+    <label><span>Foto (opcional)</span><input type="file" name="image" accept="image/*"></label>
+    <div id="productImagePreview" class="mb"></div>
+    <label class="check"><input type="checkbox" name="active" checked> Visible en el catálogo</label>
+    <p class="error" id="productError"></p>
+    <div class="actions">
+      <button type="button" class="btn danger hidden" id="btnDeleteProduct">Eliminar</button>
+      <button type="submit" class="btn primary" id="btnSaveProduct">Guardar</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Diálogo: cliente -->
+<dialog id="dlgCustomer">
+  <div class="dlg-head"><h2 id="dlgCustomerTitle">Cliente</h2><button class="close" data-close>✕</button></div>
+  <form id="formCustomer" class="dlg-body">
+    <input type="hidden" name="id">
+    <label><span>Nombre</span><input type="text" name="name" required></label>
+    <label><span>Teléfono / WhatsApp</span><input type="tel" name="phone" inputmode="tel" placeholder="999 999 999"></label>
+    <label><span>Descuento que le ofreces</span><select name="discount_pct" id="customerDiscount"></select></label>
+    <label><span>Notas</span><textarea name="notes" placeholder="Dirección, preferencias, etc."></textarea></label>
+    <p class="error" id="customerError"></p>
+    <div class="actions">
+      <button type="button" class="btn danger hidden" id="btnDeleteCustomer">Eliminar</button>
+      <button type="submit" class="btn primary" id="btnSaveCustomer">Guardar</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Diálogo: nuevo pedido -->
+<dialog id="dlgOrder">
+  <div class="dlg-head"><h2>Nuevo pedido</h2><button class="close" data-close>✕</button></div>
+  <div class="dlg-body">
+    <div class="row">
+      <label class="grow"><span>Cliente</span><select id="orderCustomer"></select></label>
+      <button type="button" class="btn sm" id="btnQuickCustomer" style="margin-top:12px">+ Nuevo</button>
+    </div>
+    <label><span>Descuento aplicado</span><select id="orderDiscount"></select></label>
+    <label><span>Agregar producto</span><input type="search" id="orderSearch" placeholder="Buscar producto…"></label>
+    <div class="picker" id="orderPicker"></div>
+    <h3 class="mt" style="font-size:15px">Productos del pedido</h3>
+    <div id="orderItems"></div>
+    <div class="totals" id="orderTotals"></div>
+    <label class="mt"><span>Nota (opcional)</span><input type="text" id="orderNote" placeholder="Ej. entregar el sábado"></label>
+    <p class="error" id="orderError"></p>
+    <div class="actions">
+      <button type="button" class="btn primary" id="btnSaveOrder">Guardar pedido</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- Diálogo: detalle pedido -->
+<dialog id="dlgOrderDetail">
+  <div class="dlg-head"><h2>Pedido</h2><button class="close" data-close>✕</button></div>
+  <div class="dlg-body" id="orderDetailBody"></div>
+</dialog>
+
+<div id="toast" class="toast"></div>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
