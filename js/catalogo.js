@@ -135,22 +135,54 @@ $("#btnCheckout").addEventListener("click", () => {
     <div class="grow"><div>${esc(i.name)}</div><div class="muted">${i.qty} × ${fmt(i.unit)}</div></div><div class="bold">${fmt(i.subtotal)}</div></div>`).join("");
   $("#checkoutTotals").innerHTML = `<div class="row between grand" style="border:0;margin:0;padding:0"><span>Total</span><span>${fmt(total)}</span></div>`;
   $("#checkoutError").textContent = "";
-  try { $("#buyerName").value = localStorage.getItem("buyerName") || ""; } catch {}
+  try { $("#buyerName").value = localStorage.getItem("buyerName") || ""; $("#buyerPhone").value = localStorage.getItem("buyerPhone") || ""; } catch {}
+  $("#btnSend").disabled = false;
   $("#dlgCheckout").showModal();
 });
 
-$("#btnSend").addEventListener("click", () => {
+let toastTimer;
+function toast(msg) {
+  const t = $("#toast");
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 3500);
+}
+
+$("#btnSend").addEventListener("click", async () => {
   const name = $("#buyerName").value.trim();
+  const phone = $("#buyerPhone").value.trim();
   if (!name) { $("#checkoutError").textContent = "Escribe tu nombre."; return; }
-  try { localStorage.setItem("buyerName", name); } catch {}
+  $("#checkoutError").textContent = "";
+  try { localStorage.setItem("buyerName", name); localStorage.setItem("buyerPhone", phone); } catch {}
+  const btn = $("#btnSend"); btn.disabled = true;
+
   const items = cartItems();
   const total = round2(items.reduce((a, i) => a + i.subtotal, 0));
   const note = $("#buyerNote").value.trim();
-  const msg = `Hola, soy ${name} y quiero hacer este pedido:\n` +
+
+  // 1) Registrar el pedido en la app del negocio (queda como "Pendiente")
+  let number = null;
+  const { data, error } = await supabase.rpc("crear_pedido_catalogo", {
+    p_nombre: name, p_telefono: phone, p_nota: note, p_descuento: discount,
+    p_items: items.map((i) => ({ product_id: i.id, qty: i.qty })),
+  });
+  if (error) console.error("No se pudo registrar el pedido:", error.message);
+  else number = data;
+
+  // 2) Abrir WhatsApp con el resumen
+  const msg = `Hola, soy ${name} y quiero hacer este pedido${number ? ` (Pedido #${number})` : ""}:\n` +
     items.map((i) => `• ${i.qty} × ${i.name} — ${fmt(i.subtotal)}`).join("\n") +
     `\n\n*Total: ${fmt(total)}*` + (discount > 0 ? ` (con ${discount}% dto.)` : "") +
-    (note ? `\nNota: ${note}` : "");
+    (note ? `\nNota: ${note}` : "") + (phone ? `\nMi celular: ${phone}` : "");
   window.open(waLink(settings.whatsapp, msg), "_blank");
+
+  if (number) {
+    cart.clear(); renderGrid();
+    $("#dlgCheckout").close();
+    toast(`Pedido #${number} registrado. ¡Gracias!`);
+  } else {
+    btn.disabled = false;
+    toast("No se pudo registrar el pedido automáticamente; envíalo por WhatsApp.");
+  }
 });
 
 init();

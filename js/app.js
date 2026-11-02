@@ -38,7 +38,19 @@ async function init() {
   if (session) await enterApp(); else showLogin();
 
   supabase.auth.onAuthStateChange((_event, s) => { if (!s) showLogin(); });
+
+  // Al volver a la app (p. ej. después de WhatsApp) se recargan los datos: así aparecen los pedidos del catálogo
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
 }
+
+let refreshing = false;
+async function refresh() {
+  if (refreshing || $("#app").classList.contains("hidden")) return;
+  refreshing = true;
+  try { await loadAll(); render(); } catch (e) { console.error(e); }
+  refreshing = false;
+}
+$("#btnRefresh").addEventListener("click", async () => { await refresh(); toast("Actualizado"); });
 
 function showLogin() {
   $("#app").classList.add("hidden");
@@ -164,8 +176,8 @@ function orderCard(o) {
   return `<div class="card tap" data-order="${o.id}">
     <div class="row between">
       <div class="grow">
-        <div class="bold ellipsis">${esc(o.customer_name || "Sin cliente")}</div>
-        <div class="muted">${fmtDate(o.created_at)} · ${n} producto${n === 1 ? "" : "s"} · ${o.discount_pct}% dto.</div>
+        <div class="bold ellipsis">${o.number ? `<span class="muted">#${o.number}</span> ` : ""}${esc(o.customer_name || "Sin cliente")}</div>
+        <div class="muted">${fmtDate(o.created_at)} · ${n} producto${n === 1 ? "" : "s"} · ${o.discount_pct}% dto.${o.source === "catalogo" ? ' · <span class="badge catalogo">Catálogo</span>' : ""}</div>
       </div>
       <div class="right">
         <div class="price">${fmt(o.total)}</div>
@@ -287,11 +299,17 @@ function openOrderDetail(id) {
   if (!o) return;
   const cust = state.customers.find((c) => c.id === o.customer_id);
   const body = $("#orderDetailBody");
+  const phone = cust?.phone || o.customer_phone || "";
   body.innerHTML = `
     <div class="row between mb">
-      <div><div class="bold" style="font-size:17px">${esc(o.customer_name || "Sin cliente")}</div><div class="muted">${fmtDate(o.created_at)} · ${o.discount_pct}% dto.</div></div>
+      <div>
+        <div class="bold" style="font-size:17px">${o.number ? `<span class="muted">#${o.number}</span> ` : ""}${esc(o.customer_name || "Sin cliente")}</div>
+        <div class="muted">${fmtDate(o.created_at)} · ${o.discount_pct}% dto.${o.source === "catalogo" ? ' · <span class="badge catalogo">Catálogo</span>' : ""}</div>
+        ${phone ? `<div class="muted">📱 ${esc(phone)}</div>` : ""}
+      </div>
       <span class="badge ${o.status}">${STATUS_LABEL[o.status]}</span>
     </div>
+    ${!cust && o.source === "catalogo" ? `<button class="btn sm block mb" id="btnSaveAsCustomer">＋ Guardar "${esc(o.customer_name)}" como cliente</button>` : ""}
     ${o.order_items.map((i) => `<div class="item-line">
       <div class="grow"><div>${esc(i.product_name)}</div><div class="muted">${i.qty} × ${fmt(i.unit_price)}</div></div>
       <div class="bold">${fmt(i.qty * i.unit_price)}</div></div>`).join("")}
@@ -317,8 +335,17 @@ function openOrderDetail(id) {
   });
   $("#btnWaOrder").addEventListener("click", () => {
     const lines = o.order_items.map((i) => `• ${i.qty} × ${i.product_name} — ${fmt(i.qty * i.unit_price)}`);
-    const msg = `Hola ${o.customer_name}, este es tu pedido${state.settings.business_name ? " de " + state.settings.business_name : ""}:\n${lines.join("\n")}\n\n*Total: ${fmt(o.total)}*${o.note ? "\n" + o.note : ""}\n¡Gracias!`;
-    window.open(waLink(cust?.phone, msg), "_blank");
+    const msg = `Hola ${o.customer_name}, este es tu pedido${o.number ? ` #${o.number}` : ""}${state.settings.business_name ? " de " + state.settings.business_name : ""}:\n${lines.join("\n")}\n\n*Total: ${fmt(o.total)}*${o.note ? "\n" + o.note : ""}\n¡Gracias!`;
+    window.open(waLink(phone, msg), "_blank");
+  });
+  $("#btnSaveAsCustomer")?.addEventListener("click", async () => {
+    const { data, error } = await supabase.from("customers").insert({ name: o.customer_name, phone: o.customer_phone || "", discount_pct: o.discount_pct }).select().single();
+    if (error) { toast("Error: " + error.message); return; }
+    const { error: e2 } = await supabase.from("orders").update({ customer_id: data.id }).eq("id", o.id);
+    if (e2) { toast("Error: " + e2.message); return; }
+    state.customers.push(data); state.customers.sort((a, b) => a.name.localeCompare(b.name));
+    o.customer_id = data.id;
+    toast("Cliente guardado"); openOrderDetail(id);
   });
   $("#btnDeleteOrder").addEventListener("click", async () => {
     if (!confirm("¿Eliminar este pedido? No se puede deshacer.")) return;

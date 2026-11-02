@@ -50,6 +50,8 @@ img { max-width: 100%; }
 }
 .topbar h1 { font-size: 20px; }
 .topbar .sub { font-size: 13px; opacity: .85; }
+.iconbtn { width: 40px; height: 40px; border-radius: 50%; border: 0; background: rgba(255,255,255,.18); color: #fff; font-size: 22px; cursor: pointer; }
+.badge.catalogo { background: var(--info-soft); color: var(--info); }
 main { padding: 14px 16px calc(var(--tab-h) + 90px); max-width: 720px; margin: 0 auto; }
 .public main { padding-bottom: 120px; }
 
