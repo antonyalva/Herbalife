@@ -1,0 +1,11 @@
+// Configuración de despliegue en Cloudflare Workers (sitio estático).
+// Cloudflare lee este archivo al conectar el repositorio: publica la carpeta raíz tal cual, sin compilar nada.
+{
+  "name": "herbalife",
+  "compatibility_date": "2025-10-01",
+  "assets": {
+    "directory": "./",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "none"
+  }
+}
