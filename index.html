@@ -12,9 +12,22 @@
   <link rel="icon" href="icons/icon.svg">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <script>(function(){try{var t=localStorage.getItem("theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t);}catch(e){}})();</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+
+<!-- Intro -->
+<div id="splash" class="splash" data-shown-at="">
+  <div class="splash-logo"><img src="icons/icon.svg" alt=""></div>
+  <div class="splash-name" id="splashName">Mi Negocio</div>
+  <div class="splash-sub">Gestión de pedidos y catálogo</div>
+</div>
+<script>document.getElementById("splash").dataset.shownAt = Date.now(); try { var n = localStorage.getItem("businessName"); if (n) document.getElementById("splashName").textContent = n; } catch (e) {}</script>
 
 <!-- Aviso de configuración pendiente -->
 <div id="setup" class="screen hidden">
@@ -26,9 +39,13 @@
 
 <!-- Inicio de sesión -->
 <div id="login" class="screen hidden">
-  <form id="loginForm" class="card" autocomplete="on">
-    <div class="brand"><img src="icons/icon.svg" alt=""><h1>Mi Negocio</h1></div>
-    <label><span>Correo</span><input type="email" name="email" required autocomplete="username"></label>
+  <form id="loginForm" class="login-card" autocomplete="on">
+    <div class="brand">
+      <div class="logo-ring"><img src="icons/leaf.svg" alt=""></div>
+      <h1>Hola de nuevo 👋</h1>
+      <p class="muted">Ingresa para gestionar tu negocio</p>
+    </div>
+    <label><span>Correo</span><input type="email" name="email" required autocomplete="username" placeholder="tu@correo.com"></label>
     <label><span>Contraseña</span>
       <div class="pw-wrap">
         <input type="password" name="password" required autocomplete="current-password">
@@ -44,7 +61,10 @@
 <div id="app" class="hidden">
   <header class="topbar">
     <div><h1 id="title">Pedidos</h1><div class="sub" id="subtitle"></div></div>
-    <button class="iconbtn" id="btnRefresh" aria-label="Actualizar">↻</button>
+    <div class="tools">
+      <button class="iconbtn" data-theme-toggle aria-label="Cambiar tema">🌙</button>
+      <button class="iconbtn" id="btnRefresh" aria-label="Actualizar">↻</button>
+    </div>
   </header>
   <main id="view"></main>
   <button id="fab" class="fab" aria-label="Agregar">+</button>

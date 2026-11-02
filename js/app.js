@@ -1,5 +1,6 @@
 import { supabase, configured } from "./db.js";
 import { salePrice, costPrice, productCost, productPrice, fmt, fmtDate, totals, waLink, round2 } from "./pricing.js";
+import { initTheme, applyTheme, getTheme, hideSplash } from "./theme.js";
 
 // ---------- utilidades ----------
 const $ = (s, r = document) => r.querySelector(s);
@@ -31,11 +32,14 @@ const STATUS_LABEL = { pendiente: "Pendiente", entregado: "Entregado", pagado: "
 
 // ---------- arranque ----------
 async function init() {
+  initTheme();
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(() => {});
-  if (!configured) { $("#setup").classList.remove("hidden"); return; }
+  if (!configured) { $("#setup").classList.remove("hidden"); hideSplash(); return; }
 
-  const { data: { session } } = await supabase.auth.getSession();
-  if (session) await enterApp(); else showLogin();
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) await enterApp(); else showLogin();
+  } finally { hideSplash(); }
 
   supabase.auth.onAuthStateChange((_event, s) => { if (!s) showLogin(); });
 
@@ -109,6 +113,7 @@ async function loadAll() {
   state.products = p.data.map(numProduct);
   state.customers = c.data;
   state.orders = o.data.map(numOrder);
+  try { localStorage.setItem("businessName", state.settings.business_name || ""); } catch {}
 }
 const numProduct = (p) => ({ ...p, public_price: Number(p.public_price), cost: p.cost == null ? null : Number(p.cost), prices: p.prices || {} });
 const numOrder = (o) => ({
@@ -683,9 +688,22 @@ function renderSettings() {
     </div>
 
     <div class="card">
+      <h2 style="font-size:16px" class="mb">Apariencia</h2>
+      <div class="segmented">
+        <button type="button" data-theme-pick="auto">Automático</button>
+        <button type="button" data-theme-pick="light">☀️ Claro</button>
+        <button type="button" data-theme-pick="dark">🌙 Oscuro</button>
+      </div>
+      <p class="muted small mt">"Automático" sigue la configuración de tu celular.</p>
+    </div>
+
+    <div class="card">
       <p class="muted mb">Sesión iniciada.</p>
       <button class="btn danger block" id="btnLogout">Cerrar sesión</button>
     </div>`;
+
+  applyTheme(getTheme());
+  $$("[data-theme-pick]").forEach((b) => b.addEventListener("click", () => applyTheme(b.dataset.themePick)));
 
   $("#formSettings").addEventListener("submit", async (e) => {
     e.preventDefault();

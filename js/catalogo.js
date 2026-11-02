@@ -1,5 +1,6 @@
 import { supabase, configured } from "./db.js";
 import { productPrice, fmt, waLink, round2 } from "./pricing.js";
+import { initTheme, hideSplash } from "./theme.js";
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -16,16 +17,18 @@ const cart = new Map(); // product_id -> qty
 $$("dialog [data-close]").forEach((b) => b.addEventListener("click", () => b.closest("dialog").close()));
 
 async function init() {
+  initTheme();
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(() => {});
-  if (!configured) { $("#subtitle").textContent = "Catálogo no configurado"; return; }
+  if (!configured) { $("#subtitle").textContent = "Catálogo no configurado"; hideSplash(500); return; }
 
   const [s, p] = await Promise.all([
     supabase.from("settings").select("business_name, whatsapp, discount_levels").eq("id", 1).maybeSingle(),
     supabase.from("products").select("id, name, category, public_price, prices, image_url, images, description").eq("active", true).order("name"),
   ]);
-  if (s.error || p.error) { $("#subtitle").textContent = "No se pudo cargar el catálogo"; return; }
+  if (s.error || p.error) { $("#subtitle").textContent = "No se pudo cargar el catálogo"; hideSplash(500); return; }
   settings = s.data || { business_name: "Catálogo", whatsapp: "", discount_levels: [0] };
   products = p.data.map((x) => ({ ...x, public_price: Number(x.public_price), prices: x.prices || {} }));
+  try { localStorage.setItem("businessName", settings.business_name || ""); } catch {}
 
   const d = Number(new URLSearchParams(location.search).get("d"));
   discount = settings.discount_levels.includes(d) ? d : 0;
@@ -33,6 +36,10 @@ async function init() {
   document.title = settings.business_name;
   $("#title").textContent = settings.business_name;
   $("#subtitle").textContent = discount > 0 ? `Precios con ${discount}% de descuento para ti` : "Catálogo de productos";
+  $("#hero").innerHTML = `<div class="logo-ring"><img src="icons/leaf.svg" alt=""></div>
+    <div class="grow"><h2>${esc(settings.business_name)}</h2>
+    <div class="muted">${discount > 0 ? `Tienes <b>${discount}% de descuento</b> en todo el catálogo.` : "Elige tus productos y envía tu pedido por WhatsApp."}</div></div>`;
+  hideSplash(700);
 
   const cats = [...new Set(products.map((x) => x.category).filter(Boolean))].sort();
   $("#categories").innerHTML = cats.length

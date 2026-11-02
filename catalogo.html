@@ -18,13 +18,25 @@
   <meta name="twitter:card" content="summary_large_image">
   <link rel="icon" href="icons/icon.svg">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <script>(function(){try{var t=localStorage.getItem("theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t);}catch(e){}})();</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body class="public">
+  <div id="splash" class="splash hidden">
+    <div class="splash-logo"><img src="icons/icon.svg" alt=""></div>
+    <div class="splash-name" id="splashName">Catálogo</div>
+  </div>
+  <script>(function(){try{if(!sessionStorage.getItem("splashShown")){var s=document.getElementById("splash");s.classList.remove("hidden");s.dataset.shownAt=Date.now();sessionStorage.setItem("splashShown","1");var n=localStorage.getItem("businessName");if(n)document.getElementById("splashName").textContent=n;}}catch(e){}})();</script>
   <header class="topbar">
     <div><h1 id="title">Catálogo</h1><div class="sub" id="subtitle">Cargando…</div></div>
+    <div class="tools"><button class="iconbtn" data-theme-toggle aria-label="Cambiar tema">🌙</button></div>
   </header>
   <main>
+    <div class="hero" id="hero"></div>
     <input type="search" class="search" id="search" placeholder="Buscar producto…">
     <div class="chips" id="categories"></div>
     <div class="grid" id="grid"></div>

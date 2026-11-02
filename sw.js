@@ -1,9 +1,9 @@
-const CACHE = "mi-negocio-v2";
+const CACHE = "mi-negocio-v3";
 const ASSETS = [
   "./", "./index.html", "./catalogo.html",
   "./css/style.css",
-  "./js/app.js", "./js/catalogo.js", "./js/db.js", "./js/pricing.js", "./js/config.js",
-  "./manifest.webmanifest", "./icons/icon.svg", "./icons/icon-192.png", "./icons/icon-512.png",
+  "./js/app.js", "./js/catalogo.js", "./js/db.js", "./js/pricing.js", "./js/config.js", "./js/theme.js",
+  "./manifest.webmanifest", "./icons/icon.svg", "./icons/leaf.svg", "./icons/icon-192.png", "./icons/icon-512.png",
 ];
 
 self.addEventListener("install", (e) => {
@@ -24,7 +24,7 @@ self.addEventListener("fetch", (e) => {
   const url = new URL(req.url);
 
   // Librerías externas: primero caché, luego red
-  if (url.hostname === "esm.sh" || url.hostname === "cdnjs.cloudflare.com") {
+  if (["esm.sh", "cdnjs.cloudflare.com", "fonts.googleapis.com", "fonts.gstatic.com"].includes(url.hostname)) {
     e.respondWith(
       caches.match(req).then((hit) => hit || fetch(req).then((res) => {
         const copy = res.clone();
