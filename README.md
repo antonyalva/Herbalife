@@ -40,12 +40,12 @@ sw.js, manifest.webmanifest, icons/ → para que se instale como app
 5. (Recomendado) **Authentication → Providers → Email**: desactiva *"Allow new users to sign up"* para que nadie más pueda registrarse.
 
 ### 2. Publicar la app en internet (gratis)
-La forma más simple es **Netlify Drop**:
-1. Entra a https://app.netlify.com/drop (crea cuenta gratis si te la pide).
-2. Arrastra la carpeta completa `HERBALIFE` a la página.
-3. Te dará un enlace tipo `https://algo-aleatorio.netlify.app`. Puedes cambiarle el nombre en *Site settings → Change site name* (ej. `minegocio-herbalife.netlify.app`).
+La app está publicada en **Cloudflare Workers** (gratis, sin marca de agua), conectada al repositorio de GitHub:
+- Enlace público: https://herbalife.antony-adrian-3.workers.dev
+- Cada vez que se sube un cambio a la rama `main`, Cloudflare lo publica solo en 1-2 minutos. La configuración está en `wrangler.jsonc` (sitio estático, sin compilación) y `.assetsignore` (archivos que no se publican).
+- El sitio antiguo `herbalife-beta.netlify.app` sigue existiendo solo para redirigir al nuevo enlace (archivo `_redirects`), así los enlaces y QR ya compartidos siguen funcionando.
 
-Cada vez que haya una nueva versión de la app, vuelves a arrastrar la carpeta en *Deploys*.
+Si se cambia de dominio, actualizar las etiquetas `og:url` / `og:image` en `index.html` y `catalogo.html` (vista previa en WhatsApp).
 
 ### 3. Instalar en tu celular
 - Abre el enlace en Chrome (Android) o Safari (iPhone).
