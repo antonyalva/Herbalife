@@ -138,6 +138,16 @@ main { padding: 14px 16px calc(var(--tab-h) + 90px); max-width: 720px; margin: 0
 }
 .price-grid span b { display: block; font-size: 13px; }
 .price-grid span.cost { border-color: var(--danger-soft); background: var(--danger-soft); }
+.price-grid span.fixed { border-color: var(--primary); }
+.price-grid span .tag { font-size: 10px; color: var(--primary); font-weight: 600; margin-left: 4px; }
+
+.price-rows { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.price-row { display: grid; grid-template-columns: 1fr 120px 70px; align-items: center; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--line); }
+.price-row:last-child { border-bottom: 0; }
+.price-row .lbl { font-size: 14px; }
+.price-row .lbl small { display: block; color: var(--muted); font-size: 12px; }
+.price-row input { padding: 8px 10px; font-size: 15px; }
+.price-row .profit { font-size: 13px; text-align: right; }
 
 .thumb {
   width: 56px; height: 56px; border-radius: 10px; object-fit: cover; background: var(--bg); flex: 0 0 auto;

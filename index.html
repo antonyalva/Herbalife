@@ -61,7 +61,11 @@
     <label><span>Categoría (opcional)</span><input type="text" name="category" placeholder="Ej. Batidos, Tés, Proteínas" list="categories"></label>
     <datalist id="categories"></datalist>
     <label><span>Precio público (S/)</span><input type="number" name="public_price" required min="0" step="0.01" inputmode="decimal" placeholder="238.00"></label>
-    <div id="productPricePreview" class="price-grid mb"></div>
+    <label><span>Mi costo real (S/) <small class="muted">— vacío = calculado con mi % de mayorista</small></span><input type="number" name="cost" min="0" step="0.01" inputmode="decimal"></label>
+    <div class="mb">
+      <div class="muted small bold" style="margin-bottom:6px">Precios de venta <span style="font-weight:400">— vacío = calculado automáticamente; escribe un monto para fijarlo</span></div>
+      <div id="productPrices" class="price-rows"></div>
+    </div>
     <label><span>Descripción (opcional)</span><textarea name="description" placeholder="Beneficios, ingredientes, presentación… Se muestra en el catálogo al tocar el producto."></textarea></label>
     <label><span>Fotos (opcional, puedes elegir varias)</span><input type="file" name="image" accept="image/*" multiple></label>
     <div id="productImagePreview" class="imgchips mb"></div>

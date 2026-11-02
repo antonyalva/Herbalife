@@ -10,6 +10,16 @@ export const salePrice = (publicPrice, discountPct) =>
 export const costPrice = (publicPrice, costDiscountPct) =>
   round2(publicPrice * (1 - (Number(costDiscountPct) || 0) / 100));
 
+/** Costo real de un producto: el que registraste, o el calculado con tu % de mayorista. */
+export const productCost = (p, costDiscountPct) =>
+  p.cost != null && p.cost !== "" ? round2(p.cost) : costPrice(p.public_price, costDiscountPct);
+
+/** Precio de venta de un producto a un nivel de descuento: el fijado a mano, o el calculado. */
+export const productPrice = (p, discountPct) => {
+  const fixed = p.prices?.[String(discountPct)];
+  return fixed != null && fixed !== "" ? round2(fixed) : salePrice(p.public_price, discountPct);
+};
+
 /** Formato en soles: S/ 1,234.50 */
 export const fmt = (n) =>
   "S/ " + round2(n).toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });

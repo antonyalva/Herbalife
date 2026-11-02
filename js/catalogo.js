@@ -1,5 +1,5 @@
 import { supabase, configured } from "./db.js";
-import { salePrice, fmt, waLink, round2 } from "./pricing.js";
+import { productPrice, fmt, waLink, round2 } from "./pricing.js";
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -17,11 +17,11 @@ async function init() {
 
   const [s, p] = await Promise.all([
     supabase.from("settings").select("business_name, whatsapp, discount_levels").eq("id", 1).maybeSingle(),
-    supabase.from("products").select("id, name, category, public_price, image_url, images, description").eq("active", true).order("name"),
+    supabase.from("products").select("id, name, category, public_price, prices, image_url, images, description").eq("active", true).order("name"),
   ]);
   if (s.error || p.error) { $("#subtitle").textContent = "No se pudo cargar el catálogo"; return; }
   settings = s.data || { business_name: "Catálogo", whatsapp: "", discount_levels: [0] };
-  products = p.data.map((x) => ({ ...x, public_price: Number(x.public_price) }));
+  products = p.data.map((x) => ({ ...x, public_price: Number(x.public_price), prices: x.prices || {} }));
 
   const d = Number(new URLSearchParams(location.search).get("d"));
   discount = settings.discount_levels.includes(d) ? d : 0;
@@ -46,7 +46,7 @@ function renderGrid() {
   const list = products.filter((p) => (!category || p.category === category) && (!q || norm(p.name).includes(q)));
   $("#empty").classList.toggle("hidden", list.length > 0);
   $("#grid").innerHTML = list.map((p) => {
-    const price = salePrice(p.public_price, discount);
+    const price = productPrice(p, discount);
     const qty = cart.get(p.id) || 0;
     return `<div class="product-card">
       <div class="img" data-open="${p.id}">${p.image_url ? `<img src="${esc(p.image_url)}" alt="${esc(p.name)}" loading="lazy">` : "🌿"}</div>
@@ -92,7 +92,7 @@ function openDetail(id) {
   $("#pdDots").innerHTML = imgs.length > 1 ? imgs.map((_, i) => `<span class="${i === 0 ? "on" : ""}"></span>`).join("") : "";
   $("#pdGallery").scrollLeft = 0;
   $("#pdOld").textContent = discount > 0 ? fmt(p.public_price) : "";
-  $("#pdPrice").textContent = fmt(salePrice(p.public_price, discount));
+  $("#pdPrice").textContent = fmt(productPrice(p, discount));
   $("#pdDesc").textContent = p.description || "";
   renderDetailQty();
   $("#dlgProduct").showModal();
@@ -114,7 +114,7 @@ $("#dlgProduct").addEventListener("close", () => { detailId = null; });
 function cartItems() {
   return [...cart.entries()].map(([id, qty]) => {
     const p = products.find((x) => x.id === id);
-    const unit = salePrice(p.public_price, discount);
+    const unit = productPrice(p, discount);
     return { ...p, qty, unit, subtotal: round2(qty * unit) };
   });
 }

@@ -22,6 +22,8 @@ create table if not exists public.products (
   name text not null,
   category text not null default '',
   public_price numeric(10,2) not null check (public_price >= 0),
+  cost numeric(10,2) check (cost is null or cost >= 0),   -- costo real (si es null se calcula con cost_discount_pct)
+  prices jsonb not null default '{}'::jsonb,              -- precios fijados a mano por nivel: {"20": 190, "35": 155}
   description text not null default '',
   image_url text,                       -- foto principal (la primera de images)
   images text[] not null default '{}',  -- todas las fotos
@@ -74,7 +76,14 @@ alter table public.customers   enable row level security;
 alter table public.orders      enable row level security;
 alter table public.order_items enable row level security;
 
--- Cualquiera (clientes con el enlace) puede ver el catálogo y los datos básicos del negocio
+-- Cualquiera (clientes con el enlace) puede ver el catálogo y los datos básicos del negocio,
+-- pero nunca tus costos: se limitan las columnas visibles para anónimos
+revoke select on public.products from anon;
+grant select (id, name, category, public_price, prices, image_url, images, description, active, created_at)
+  on public.products to anon;
+revoke select on public.settings from anon;
+grant select (id, business_name, whatsapp, discount_levels) on public.settings to anon;
+
 drop policy if exists "catalogo publico" on public.products;
 create policy "catalogo publico" on public.products
   for select to anon using (active = true);

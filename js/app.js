@@ -1,5 +1,5 @@
 import { supabase, configured } from "./db.js";
-import { salePrice, costPrice, fmt, fmtDate, totals, waLink, round2 } from "./pricing.js";
+import { salePrice, costPrice, productCost, productPrice, fmt, fmtDate, totals, waLink, round2 } from "./pricing.js";
 
 // ---------- utilidades ----------
 const $ = (s, r = document) => r.querySelector(s);
@@ -98,7 +98,7 @@ async function loadAll() {
   state.customers = c.data;
   state.orders = o.data.map(numOrder);
 }
-const numProduct = (p) => ({ ...p, public_price: Number(p.public_price) });
+const numProduct = (p) => ({ ...p, public_price: Number(p.public_price), cost: p.cost == null ? null : Number(p.cost), prices: p.prices || {} });
 const numOrder = (o) => ({
   ...o, total: Number(o.total), cost: Number(o.cost),
   order_items: (o.order_items || []).map((i) => ({ ...i, public_price: Number(i.public_price), unit_price: Number(i.unit_price), unit_cost: Number(i.unit_cost) })),
@@ -216,7 +216,7 @@ function renderOrderPicker() {
   const q = norm($("#orderSearch").value);
   const list = state.products.filter((p) => p.active && (!q || norm(p.name).includes(q) || norm(p.category).includes(q))).slice(0, 30);
   $("#orderPicker").innerHTML = list.length
-    ? list.map((p) => `<button type="button" data-add="${p.id}"><span>${esc(p.name)}</span><span class="muted">${fmt(salePrice(p.public_price, state.draft.discount_pct))}</span></button>`).join("")
+    ? list.map((p) => `<button type="button" data-add="${p.id}"><span>${esc(p.name)}</span><span class="muted">${fmt(productPrice(p, state.draft.discount_pct))}</span></button>`).join("")
     : `<div class="muted" style="padding:10px 12px">Sin resultados</div>`;
   $$("[data-add]", $("#orderPicker")).forEach((b) => b.addEventListener("click", () => addDraftItem(b.dataset.add)));
 }
@@ -225,13 +225,13 @@ function addDraftItem(productId) {
   const p = state.products.find((x) => x.id === productId);
   const ex = state.draft.items.find((i) => i.product_id === productId);
   if (ex) ex.qty++;
-  else state.draft.items.push({ product_id: p.id, product_name: p.name, public_price: p.public_price, qty: 1 });
+  else state.draft.items.push({ product_id: p.id, product_name: p.name, public_price: p.public_price, cost: p.cost, prices: p.prices, qty: 1 });
   renderOrderItems();
 }
 
 function draftComputed() {
   const d = state.draft.discount_pct;
-  const items = state.draft.items.map((i) => ({ ...i, unit_price: salePrice(i.public_price, d), unit_cost: costPrice(i.public_price, costPct()) }));
+  const items = state.draft.items.map((i) => ({ ...i, unit_price: productPrice(i, d), unit_cost: productCost(i, costPct()) }));
   return { items, ...totals(items) };
 }
 
@@ -413,9 +413,13 @@ $("#btnDeleteCustomer").addEventListener("click", async () => {
 // =====================================================================
 //  PRODUCTOS
 // =====================================================================
-function priceGrid(publicPrice) {
-  return `<span class="cost">Tu costo<b>${fmt(costPrice(publicPrice, costPct()))}</b></span>` +
-    levels().map((d) => `<span>${d === 0 ? "Público" : d + "% dto."}<b>${fmt(salePrice(publicPrice, d))}</b></span>`).join("");
+function priceGrid(p) {
+  const realCost = p.cost != null && p.cost !== "";
+  return `<span class="cost">Tu costo${realCost ? '<em class="tag">real</em>' : ""}<b>${fmt(productCost(p, costPct()))}</b></span>` +
+    levels().map((d) => {
+      const fixed = p.prices?.[String(d)] != null;
+      return `<span class="${fixed ? "fixed" : ""}">${d === 0 ? "Público" : d + "% dto."}${fixed ? '<em class="tag">fijo</em>' : ""}<b>${fmt(productPrice(p, d))}</b></span>`;
+    }).join("");
 }
 
 function renderProducts() {
@@ -432,7 +436,7 @@ function renderProducts() {
         </div>
         <div class="right"><div class="muted small">Público</div><div class="price">${fmt(p.public_price)}</div></div>
       </div>
-      <div class="price-grid">${priceGrid(p.public_price)}</div>
+      <div class="price-grid">${priceGrid(p)}</div>
     </div>`).join("")
     : `<div class="empty"><div class="big">📦</div>${q ? "Sin resultados" : "Aún no tienes productos. Toca + para agregar el primero."}</div>`}`;
 
@@ -451,7 +455,9 @@ function openProductDialog(id) {
   f.name.value = p?.name || "";
   f.category.value = p?.category || "";
   f.public_price.value = p ? p.public_price : "";
+  f.cost.value = p?.cost ?? "";
   f.description.value = p?.description || "";
+  renderPriceRows(p?.prices || {});
   f.active.checked = p ? p.active : true;
   productImages = p?.images?.length ? [...p.images] : (p?.image_url ? [p.image_url] : []);
   $("#categories").innerHTML = [...new Set(state.products.map((x) => x.category).filter(Boolean))].map((c) => `<option value="${esc(c)}">`).join("");
@@ -463,11 +469,39 @@ function openProductDialog(id) {
   $("#dlgProduct").showModal();
 }
 
+/** Producto "virtual" a partir de lo escrito en el formulario, para previsualizar */
+function formProduct() {
+  const f = $("#formProduct");
+  const prices = {};
+  for (const d of levels()) { const v = f[`price_${d}`]?.value; if (v !== undefined && v !== "") prices[String(d)] = Number(v); }
+  return { public_price: Number(f.public_price.value) || 0, cost: f.cost.value === "" ? null : Number(f.cost.value), prices };
+}
+
+function renderPriceRows(prices) {
+  $("#productPrices").innerHTML = levels().map((d) => `<div class="price-row">
+      <div class="lbl">${d === 0 ? "Precio público" : d + "% de descuento"}<small data-calc="${d}"></small></div>
+      <input type="number" name="price_${d}" min="0" step="0.01" inputmode="decimal" value="${prices[String(d)] ?? ""}">
+      <div class="profit" data-profit="${d}"></div>
+    </div>`).join("");
+  $$("#productPrices input").forEach((i) => i.addEventListener("input", updateProductPreview));
+  updateProductPreview();
+}
+
 function updateProductPreview() {
-  const v = Number($("#formProduct").public_price.value);
-  $("#productPricePreview").innerHTML = v > 0 ? priceGrid(v) : "";
+  const p = formProduct();
+  const cost = productCost(p, costPct());
+  $("#formProduct").cost.placeholder = p.public_price > 0 ? "calculado: " + fmt(costPrice(p.public_price, costPct())) : "";
+  for (const d of levels()) {
+    const calc = salePrice(p.public_price, d);
+    const inp = $(`#formProduct [name=price_${d}]`);
+    inp.placeholder = p.public_price > 0 ? calc.toFixed(2) : "";
+    $(`[data-calc="${d}"]`).textContent = inp.value !== "" && p.public_price > 0 ? "calculado: " + fmt(calc) : "";
+    const price = productPrice(p, d);
+    $(`[data-profit="${d}"]`).innerHTML = p.public_price > 0 ? `<span class="muted">gano</span><br><b class="${price - cost < 0 ? "" : "profit"}">${fmt(price - cost)}</b>` : "";
+  }
 }
 $("#formProduct").public_price.addEventListener("input", updateProductPreview);
+$("#formProduct").cost.addEventListener("input", updateProductPreview);
 function renderProductImages() {
   const box = $("#productImagePreview");
   const newFiles = [...$("#formProduct").image.files];
@@ -509,8 +543,11 @@ $("#formProduct").addEventListener("submit", async (e) => {
       uploaded.push(supabase.storage.from("productos").getPublicUrl(path).data.publicUrl);
     }
     const images = [...productImages, ...uploaded];
+    const fp = formProduct();
+    const prices = Object.fromEntries(Object.entries(fp.prices).map(([k, v]) => [k, round2(v)]));
     const row = {
       name: f.name.value.trim(), category: f.category.value.trim(), public_price: round2(f.public_price.value),
+      cost: fp.cost == null ? null : round2(fp.cost), prices,
       description: f.description.value.trim(), active: f.active.checked, images, image_url: images[0] || null,
     };
     if (f.id.value) {
