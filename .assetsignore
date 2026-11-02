@@ -6,4 +6,4 @@ wrangler.jsonc
 README.md
 supabase
 imagenes
-_redirects
+netlify.toml

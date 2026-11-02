@@ -1,0 +1,7 @@
+# Netlify: este sitio se mudó a Cloudflare. Todo enlace o QR antiguo redirige al nuevo dominio.
+# (Cloudflare ignora este archivo; no usar _redirects porque Cloudflare también lo interpreta.)
+[[redirects]]
+  from = "/*"
+  to = "https://herbalife.antony-adrian-3.workers.dev/:splat"
+  status = 301
+  force = true

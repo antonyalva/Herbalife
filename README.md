@@ -43,7 +43,7 @@ sw.js, manifest.webmanifest, icons/ → para que se instale como app
 La app está publicada en **Cloudflare Workers** (gratis, sin marca de agua), conectada al repositorio de GitHub:
 - Enlace público: https://herbalife.antony-adrian-3.workers.dev
 - Cada vez que se sube un cambio a la rama `main`, Cloudflare lo publica solo en 1-2 minutos. La configuración está en `wrangler.jsonc` (sitio estático, sin compilación) y `.assetsignore` (archivos que no se publican).
-- El sitio antiguo `herbalife-beta.netlify.app` sigue existiendo solo para redirigir al nuevo enlace (archivo `_redirects`), así los enlaces y QR ya compartidos siguen funcionando.
+- El sitio antiguo `herbalife-beta.netlify.app` sigue existiendo solo para redirigir al nuevo enlace (archivo `netlify.toml`), así los enlaces y QR ya compartidos siguen funcionando.
 
 Si se cambia de dominio, actualizar las etiquetas `og:url` / `og:image` en `index.html` y `catalogo.html` (vista previa en WhatsApp).
 
