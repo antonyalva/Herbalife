@@ -22,7 +22,9 @@ create table if not exists public.products (
   name text not null,
   category text not null default '',
   public_price numeric(10,2) not null check (public_price >= 0),
-  image_url text,
+  description text not null default '',
+  image_url text,                       -- foto principal (la primera de images)
+  images text[] not null default '{}',  -- todas las fotos
   active boolean not null default true,
   created_at timestamptz not null default now()
 );

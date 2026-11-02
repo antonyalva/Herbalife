@@ -62,8 +62,10 @@
     <datalist id="categories"></datalist>
     <label><span>Precio público (S/)</span><input type="number" name="public_price" required min="0" step="0.01" inputmode="decimal" placeholder="238.00"></label>
     <div id="productPricePreview" class="price-grid mb"></div>
-    <label><span>Foto (opcional)</span><input type="file" name="image" accept="image/*"></label>
-    <div id="productImagePreview" class="mb"></div>
+    <label><span>Descripción (opcional)</span><textarea name="description" placeholder="Beneficios, ingredientes, presentación… Se muestra en el catálogo al tocar el producto."></textarea></label>
+    <label><span>Fotos (opcional, puedes elegir varias)</span><input type="file" name="image" accept="image/*" multiple></label>
+    <div id="productImagePreview" class="imgchips mb"></div>
+    <p class="muted small mb">La primera foto es la principal. Toca ✕ para quitar una.</p>
     <label class="check"><input type="checkbox" name="active" checked> Visible en el catálogo</label>
     <p class="error" id="productError"></p>
     <div class="actions">

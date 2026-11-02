@@ -428,7 +428,7 @@ function renderProducts() {
         ${p.image_url ? `<img class="thumb" src="${esc(p.image_url)}" alt="">` : `<div class="thumb">📦</div>`}
         <div class="grow">
           <div class="bold ellipsis">${esc(p.name)}</div>
-          <div class="muted">${esc(p.category) || "Sin categoría"} ${p.active ? "" : '· <span class="badge off">Oculto</span>'}</div>
+          <div class="muted">${esc(p.category) || "Sin categoría"}${(p.images?.length || 0) > 1 ? ` · ${p.images.length} fotos` : ""} ${p.active ? "" : '· <span class="badge off">Oculto</span>'}</div>
         </div>
         <div class="right"><div class="muted small">Público</div><div class="price">${fmt(p.public_price)}</div></div>
       </div>
@@ -441,6 +441,8 @@ function renderProducts() {
   $$("[data-product]", $("#view")).forEach((c) => c.addEventListener("click", () => openProductDialog(c.dataset.product)));
 }
 
+let productImages = []; // fotos ya guardadas que se conservan (URLs)
+
 function openProductDialog(id) {
   const f = $("#formProduct");
   const p = id ? state.products.find((x) => x.id === id) : null;
@@ -449,10 +451,11 @@ function openProductDialog(id) {
   f.name.value = p?.name || "";
   f.category.value = p?.category || "";
   f.public_price.value = p ? p.public_price : "";
+  f.description.value = p?.description || "";
   f.active.checked = p ? p.active : true;
-  f.dataset.imageUrl = p?.image_url || "";
+  productImages = p?.images?.length ? [...p.images] : (p?.image_url ? [p.image_url] : []);
   $("#categories").innerHTML = [...new Set(state.products.map((x) => x.category).filter(Boolean))].map((c) => `<option value="${esc(c)}">`).join("");
-  $("#productImagePreview").innerHTML = p?.image_url ? `<img src="${esc(p.image_url)}" alt="" style="width:90px;height:90px;object-fit:cover;border-radius:10px">` : "";
+  renderProductImages();
   $("#dlgProductTitle").textContent = p ? "Editar producto" : "Nuevo producto";
   $("#btnDeleteProduct").classList.toggle("hidden", !p);
   $("#productError").textContent = "";
@@ -465,14 +468,18 @@ function updateProductPreview() {
   $("#productPricePreview").innerHTML = v > 0 ? priceGrid(v) : "";
 }
 $("#formProduct").public_price.addEventListener("input", updateProductPreview);
-$("#formProduct").image.addEventListener("change", (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  $("#productImagePreview").innerHTML = `<img src="${URL.createObjectURL(file)}" alt="" style="width:90px;height:90px;object-fit:cover;border-radius:10px">`;
-});
+function renderProductImages() {
+  const box = $("#productImagePreview");
+  const newFiles = [...$("#formProduct").image.files];
+  box.innerHTML =
+    productImages.map((u, i) => `<div class="imgchip"><img src="${esc(u)}" alt=""><button type="button" data-rm="${i}" aria-label="Quitar foto">✕</button>${i === 0 ? '<span class="tag">Principal</span>' : ""}</div>`).join("") +
+    newFiles.map((f) => `<div class="imgchip"><img src="${URL.createObjectURL(f)}" alt=""><span class="tag">Nueva</span></div>`).join("");
+  $$("[data-rm]", box).forEach((b) => b.addEventListener("click", () => { productImages.splice(+b.dataset.rm, 1); renderProductImages(); }));
+}
+$("#formProduct").image.addEventListener("change", renderProductImages);
 
-/** Reduce la foto a máx. 800px y la convierte a JPEG para no gastar almacenamiento */
-function shrinkImage(file, max = 800) {
+/** Reduce la foto a máx. 1000px y la convierte a JPEG para no gastar almacenamiento */
+function shrinkImage(file, max = 1000) {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
@@ -492,22 +499,26 @@ $("#formProduct").addEventListener("submit", async (e) => {
   const f = e.target; const err = $("#productError"); err.textContent = "";
   const btn = $("#btnSaveProduct"); btn.disabled = true;
   try {
-    let image_url = f.dataset.imageUrl || null;
-    const file = f.image.files[0];
-    if (file) {
+    const pid = f.id.value || crypto.randomUUID();
+    const uploaded = [];
+    for (const file of f.image.files) {
       const blob = await shrinkImage(file);
-      const path = `${f.id.value || crypto.randomUUID()}.jpg`;
-      const up = await supabase.storage.from("productos").upload(path, blob, { upsert: true, contentType: "image/jpeg" });
+      const path = `${pid}/${crypto.randomUUID()}.jpg`;
+      const up = await supabase.storage.from("productos").upload(path, blob, { contentType: "image/jpeg" });
       if (up.error) throw up.error;
-      image_url = supabase.storage.from("productos").getPublicUrl(path).data.publicUrl + "?v=" + Date.now();
+      uploaded.push(supabase.storage.from("productos").getPublicUrl(path).data.publicUrl);
     }
-    const row = { name: f.name.value.trim(), category: f.category.value.trim(), public_price: round2(f.public_price.value), active: f.active.checked, image_url };
+    const images = [...productImages, ...uploaded];
+    const row = {
+      name: f.name.value.trim(), category: f.category.value.trim(), public_price: round2(f.public_price.value),
+      description: f.description.value.trim(), active: f.active.checked, images, image_url: images[0] || null,
+    };
     if (f.id.value) {
       const { data, error } = await supabase.from("products").update(row).eq("id", f.id.value).select().single();
       if (error) throw error;
       Object.assign(state.products.find((x) => x.id === f.id.value), numProduct(data));
     } else {
-      const { data, error } = await supabase.from("products").insert(row).select().single();
+      const { data, error } = await supabase.from("products").insert({ id: pid, ...row }).select().single();
       if (error) throw error;
       state.products.push(numProduct(data));
     }

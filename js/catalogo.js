@@ -17,7 +17,7 @@ async function init() {
 
   const [s, p] = await Promise.all([
     supabase.from("settings").select("business_name, whatsapp, discount_levels").eq("id", 1).maybeSingle(),
-    supabase.from("products").select("id, name, category, public_price, image_url").eq("active", true).order("name"),
+    supabase.from("products").select("id, name, category, public_price, image_url, images, description").eq("active", true).order("name"),
   ]);
   if (s.error || p.error) { $("#subtitle").textContent = "No se pudo cargar el catálogo"; return; }
   settings = s.data || { business_name: "Catálogo", whatsapp: "", discount_levels: [0] };
@@ -49,9 +49,9 @@ function renderGrid() {
     const price = salePrice(p.public_price, discount);
     const qty = cart.get(p.id) || 0;
     return `<div class="product-card">
-      <div class="img">${p.image_url ? `<img src="${esc(p.image_url)}" alt="${esc(p.name)}" loading="lazy">` : "🌿"}</div>
+      <div class="img" data-open="${p.id}">${p.image_url ? `<img src="${esc(p.image_url)}" alt="${esc(p.name)}" loading="lazy">` : "🌿"}</div>
       <div class="body">
-        <div class="name">${esc(p.name)}</div>
+        <div class="name" data-open="${p.id}">${esc(p.name)}</div>
         ${discount > 0 ? `<div class="old">${fmt(p.public_price)}</div>` : ""}
         <div class="price">${fmt(price)}</div>
         <div class="qty">
@@ -62,14 +62,54 @@ function renderGrid() {
       </div>
     </div>`;
   }).join("");
-  $$("[data-inc]").forEach((b) => b.addEventListener("click", () => { cart.set(b.dataset.inc, (cart.get(b.dataset.inc) || 0) + 1); renderGrid(); }));
-  $$("[data-dec]").forEach((b) => b.addEventListener("click", () => {
-    const n = (cart.get(b.dataset.dec) || 0) - 1;
-    if (n <= 0) cart.delete(b.dataset.dec); else cart.set(b.dataset.dec, n);
-    renderGrid();
-  }));
+  bindQty($("#grid"));
+  $$("[data-open]", $("#grid")).forEach((el) => el.addEventListener("click", () => openDetail(el.dataset.open)));
   renderCartBar();
 }
+
+function bindQty(root) {
+  $$("[data-inc]", root).forEach((b) => b.addEventListener("click", () => { changeQty(b.dataset.inc, +1); }));
+  $$("[data-dec]", root).forEach((b) => b.addEventListener("click", () => { changeQty(b.dataset.dec, -1); }));
+}
+function changeQty(id, delta) {
+  const n = (cart.get(id) || 0) + delta;
+  if (n <= 0) cart.delete(id); else cart.set(id, n);
+  renderGrid();
+  if (detailId === id) renderDetailQty();
+}
+
+// ---- detalle de producto (galería + descripción) ----
+let detailId = null;
+function openDetail(id) {
+  const p = products.find((x) => x.id === id);
+  if (!p) return;
+  detailId = id;
+  const imgs = p.images?.length ? p.images : (p.image_url ? [p.image_url] : []);
+  $("#pdName").textContent = p.name;
+  $("#pdGallery").innerHTML = imgs.length
+    ? imgs.map((u) => `<img src="${esc(u)}" alt="${esc(p.name)}">`).join("")
+    : `<div class="noimg">🌿</div>`;
+  $("#pdDots").innerHTML = imgs.length > 1 ? imgs.map((_, i) => `<span class="${i === 0 ? "on" : ""}"></span>`).join("") : "";
+  $("#pdGallery").scrollLeft = 0;
+  $("#pdOld").textContent = discount > 0 ? fmt(p.public_price) : "";
+  $("#pdPrice").textContent = fmt(salePrice(p.public_price, discount));
+  $("#pdDesc").textContent = p.description || "";
+  renderDetailQty();
+  $("#dlgProduct").showModal();
+}
+$("#pdGallery").addEventListener("scroll", () => {
+  const g = $("#pdGallery");
+  const i = Math.round(g.scrollLeft / g.clientWidth);
+  $$("#pdDots span").forEach((d, k) => d.classList.toggle("on", k === i));
+});
+function renderDetailQty() {
+  const qty = cart.get(detailId) || 0;
+  $("#pdQty").innerHTML = qty > 0
+    ? `<button data-dec="${detailId}">−</button><span>${qty}</span><button data-inc="${detailId}">+</button>`
+    : `<button class="btn primary" data-inc="${detailId}">Agregar</button>`;
+  bindQty($("#pdQty"));
+}
+$("#dlgProduct").addEventListener("close", () => { detailId = null; });
 
 function cartItems() {
   return [...cart.entries()].map(([id, qty]) => {
