@@ -18,6 +18,7 @@ function toast(msg) {
 }
 
 const state = {
+  user: null,      // usuario conectado (Supabase auth)
   settings: null,
   products: [],
   customers: [],
@@ -158,6 +159,9 @@ async function enterApp() {
   $("#login").classList.add("hidden");
   $("#app").classList.remove("hidden");
   try {
+    const { data: { session } } = await supabase.auth.getSession();
+    state.user = session?.user || null;
+    renderUserChip();
     await loadAll();
   } catch (err) {
     console.error(err);
@@ -166,20 +170,18 @@ async function enterApp() {
   render();
 }
 
+// Cada usuario ve solo sus datos: Supabase los filtra por dueño (RLS); aquí no hace falta filtrar.
 async function loadAll() {
   const [s, p, c, o] = await Promise.all([
-    supabase.from("settings").select("*").eq("id", 1).maybeSingle(),
+    supabase.from("settings").select("*").maybeSingle(),
     supabase.from("products").select("*").order("name"),
     supabase.from("customers").select("*").order("name"),
     supabase.from("orders").select("*, order_items(*)").order("created_at", { ascending: false }),
   ]);
   for (const r of [s, p, c, o]) if (r.error) throw r.error;
 
-  if (!s.data) {
-    const ins = await supabase.from("settings").insert({ id: 1 }).select().single();
-    if (ins.error) throw ins.error;
-    state.settings = ins.data;
-  } else state.settings = s.data;
+  if (!s.data) state.settings = await createSettings();
+  else state.settings = s.data;
 
   state.products = p.data.map(numProduct);
   state.customers = c.data;
@@ -190,6 +192,42 @@ const numProduct = (p) => ({ ...p, public_price: Number(p.public_price), cost: p
 const numOrder = (o) => ({
   ...o, total: Number(o.total), cost: Number(o.cost),
   order_items: (o.order_items || []).map((i) => ({ ...i, public_price: Number(i.public_price), unit_price: Number(i.unit_price), unit_cost: Number(i.unit_cost) })),
+});
+
+// Primer ingreso de un usuario: se crean sus ajustes con un nombre corto para su enlace (catalogo.html?t=NOMBRE)
+const slugify = (s) => {
+  const v = String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 30);
+  return v.length >= 2 ? v : "tienda";
+};
+async function createSettings() {
+  const base = slugify(displayUser(state.user?.email));
+  for (let i = 0; i < 5; i++) {
+    const slug = i === 0 ? base : `${base.slice(0, 24)}-${Math.random().toString(36).slice(2, 6)}`;
+    const { data, error } = await supabase.from("settings").insert({ slug }).select().single();
+    if (!error) return data;
+    if (error.code !== "23505") throw error; // 23505 = nombre ya usado por otro usuario: se intenta con sufijo
+  }
+  throw new Error("No se pudo crear la configuración");
+}
+
+function renderUserChip() {
+  const name = displayUser(state.user?.email) || "Usuario";
+  $("#userName").textContent = name;
+  $("#userAvatar").textContent = name.slice(0, 1).toUpperCase();
+}
+$("#userChip").addEventListener("click", () => {
+  const name = displayUser(state.user?.email) || "Usuario";
+  $("#dlgUserAvatar").textContent = name.slice(0, 1).toUpperCase();
+  $("#dlgUserName").textContent = name;
+  $("#dlgUserEmail").textContent = state.user?.email && state.user.email !== `${name}@${LOGIN_DOMAIN}` ? state.user.email : "";
+  $("#dlgUserBusiness").textContent = state.settings?.business_name || "";
+  $("#dlgUser").showModal();
+});
+$("#btnUserLock").addEventListener("click", async () => { $("#dlgUser").close(); await lock(); });
+$("#btnUserLogout").addEventListener("click", async () => {
+  $("#dlgUser").close();
+  try { localStorage.removeItem("lastEmail"); } catch {}
+  await supabase.auth.signOut(); showLogin();
 });
 
 const levels = () => state.settings?.discount_levels || [35, 20, 10, 0];
@@ -473,6 +511,7 @@ function referralStats() {
 }
 function refUrl(c) {
   const u = new URL("catalogo.html", location.href);
+  if (state.settings?.slug) u.searchParams.set("t", state.settings.slug);
   u.searchParams.set("ref", c.ref_code);
   return u.href;
 }
@@ -682,7 +721,7 @@ $("#formProduct").addEventListener("submit", async (e) => {
     const uploaded = [];
     for (const file of f.image.files) {
       const blob = await shrinkImage(file);
-      const path = `${pid}/${crypto.randomUUID()}.jpg`;
+      const path = `${state.user?.id || "sin-usuario"}/${pid}/${crypto.randomUUID()}.jpg`; // carpeta por usuario
       const up = await supabase.storage.from("productos").upload(path, blob, { contentType: "image/jpeg" });
       if (up.error) throw up.error;
       uploaded.push(supabase.storage.from("productos").getPublicUrl(path).data.publicUrl);
@@ -724,6 +763,7 @@ $("#btnDeleteProduct").addEventListener("click", async () => {
 // =====================================================================
 function catalogUrl(d) {
   const base = new URL("catalogo.html", location.href);
+  if (state.settings?.slug) base.searchParams.set("t", state.settings.slug);
   if (d > 0) base.searchParams.set("d", d);
   return base.href;
 }
@@ -737,6 +777,8 @@ function renderSettings() {
       <label><span>Mi WhatsApp (a donde escriben los clientes)</span><input type="tel" name="whatsapp" value="${esc(s.whatsapp)}" placeholder="999 999 999"></label>
       <label><span>Mi descuento de mayorista (%)</span><input type="number" name="cost_discount_pct" min="0" max="100" value="${s.cost_discount_pct}"></label>
       <label><span>Niveles de descuento que ofrezco (separados por coma)</span><input type="text" name="discount_levels" value="${s.discount_levels.join(", ")}" placeholder="35, 20, 10, 0"></label>
+      <label><span>Nombre corto de mi catálogo (va en el enlace)</span><input type="text" name="slug" value="${esc(s.slug || "")}" placeholder="Ej. antony" autocapitalize="none" spellcheck="false" maxlength="30"></label>
+      <p class="muted small" style="margin-top:-6px">Tu catálogo se abre en <b>catalogo.html?t=${esc(s.slug || "…")}</b>. Si lo cambias, los enlaces y QR que ya compartiste dejarán de funcionar.</p>
       <p class="error" id="settingsError"></p>
       <button class="btn primary block" type="submit">Guardar ajustes</button>
     </form>
@@ -779,7 +821,7 @@ function renderSettings() {
     </div>
 
     <div class="card">
-      <p class="muted mb">Sesión iniciada.</p>
+      <p class="muted mb">Sesión iniciada como <b>${esc(displayUser(state.user?.email))}</b>.</p>
       <button class="btn danger block" id="btnLogout">Cerrar sesión</button>
     </div>`;
 
@@ -791,9 +833,11 @@ function renderSettings() {
     const f = e.target; const err = $("#settingsError"); err.textContent = "";
     const lv = [...new Set(f.discount_levels.value.split(/[,\s]+/).filter((x) => x !== "").map(Number))].filter((n) => Number.isInteger(n) && n >= 0 && n <= 100).sort((a, b) => b - a);
     if (!lv.length) { err.textContent = "Indica al menos un nivel de descuento (ej. 35, 20, 10, 0)."; return; }
-    const row = { business_name: f.business_name.value.trim(), whatsapp: f.whatsapp.value.trim(), cost_discount_pct: Number(f.cost_discount_pct.value), discount_levels: lv, updated_at: new Date().toISOString() };
-    const { data, error } = await supabase.from("settings").update(row).eq("id", 1).select().single();
-    if (error) { err.textContent = "No se pudo guardar: " + error.message; return; }
+    const slug = f.slug.value.trim().toLowerCase();
+    if (!/^[a-z0-9][a-z0-9-]{1,29}$/.test(slug)) { err.textContent = "El nombre corto solo puede tener minúsculas, números y guiones (2 a 30 caracteres)."; return; }
+    const row = { business_name: f.business_name.value.trim(), whatsapp: f.whatsapp.value.trim(), cost_discount_pct: Number(f.cost_discount_pct.value), discount_levels: lv, slug, updated_at: new Date().toISOString() };
+    const { data, error } = await supabase.from("settings").update(row).eq("id", s.id).select().single();
+    if (error) { err.textContent = error.code === "23505" ? "Ese nombre corto ya lo usa otro usuario; elige otro." : "No se pudo guardar: " + error.message; return; }
     state.settings = data; toast("Ajustes guardados"); renderSettings();
   });
   $$("[data-copy]").forEach((b) => b.addEventListener("click", async () => {
@@ -811,7 +855,10 @@ function renderSettings() {
     touchActivity();
     toast(Number(e.target.value) > 0 ? "Bloqueo automático activado" : "Bloqueo automático desactivado");
   });
-  $("#btnLogout").addEventListener("click", async () => { await supabase.auth.signOut(); showLogin(); });
+  $("#btnLogout").addEventListener("click", async () => {
+    try { localStorage.removeItem("lastEmail"); } catch {}
+    await supabase.auth.signOut(); showLogin();
+  });
 }
 
 // ---- Código QR ----

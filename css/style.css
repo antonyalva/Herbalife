@@ -99,6 +99,19 @@ button { font-family: inherit; }
   font-size: 19px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background .15s, transform .15s;
 }
 .iconbtn:active { transform: scale(.94); background: rgba(255,255,255,.28); }
+/* Usuario conectado (arriba a la derecha) */
+.userchip {
+  display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px 0 4px; max-width: 150px;
+  border: 0; border-radius: 999px; background: rgba(255,255,255,.16); color: #fff; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: background .15s, transform .15s;
+}
+.userchip:active { transform: scale(.96); background: rgba(255,255,255,.28); }
+.userchip .uname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.avatar {
+  width: 32px; height: 32px; border-radius: 50%; flex: 0 0 auto; display: flex; align-items: center; justify-content: center;
+  background: #fff; color: var(--primary); font-weight: 800; font-size: 15px;
+}
+.avatar.big { width: 72px; height: 72px; font-size: 30px; margin: 4px auto 12px; background: var(--grad); color: #fff; box-shadow: 0 10px 28px rgba(17,105,59,.3); }
 
 main { padding: 16px 16px calc(var(--tab-h) + 96px); max-width: 720px; margin: 0 auto; }
 .public main { padding-bottom: 130px; }

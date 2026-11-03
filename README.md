@@ -54,6 +54,12 @@ Si se cambia de dominio, actualizar las etiquetas `og:url` / `og:image` en `inde
 - Android: menú ⋮ → **"Agregar a pantalla de inicio"** / **"Instalar app"**.
 - iPhone: botón Compartir → **"Agregar a inicio"**.
 
+### Varios usuarios (cada uno con sus datos)
+Cada usuario creado en **Authentication → Users** tiene sus propios productos, clientes, pedidos y ajustes; nadie ve lo de otro. Arriba a la derecha de la app se muestra el usuario conectado (toca para bloquear o cerrar sesión).
+- Cada usuario tiene un **nombre corto** (Ajustes → "Nombre corto de mi catálogo") que va en sus enlaces: `catalogo.html?t=NOMBRE&d=35`. Se propone automáticamente a partir del usuario.
+- Los enlaces antiguos sin `?t=` abren la **tienda principal** (el primer usuario que configuró la app).
+- Si la base ya existía antes de esta versión, ejecuta `supabase/migracion-05-multiusuario.sql` (en el archivo puedes indicar a qué usuario se asignan los datos actuales).
+
 ### 4. Compartir el catálogo con clientes
 En **Ajustes → Compartir catálogo** hay un enlace por cada nivel de descuento. Envíale a cada cliente el que le corresponde; verá los productos con *sus* precios y podrá armar su pedido y enviártelo por WhatsApp (al número que pongas en Ajustes).
 

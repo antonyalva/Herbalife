@@ -10,6 +10,7 @@ const norm = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-
 let settings = null, products = [], discount = 0, category = "", query = "";
 
 // Código de referido (?ref=CODIGO): se recuerda en este dispositivo para que el cliente que compartió reciba el crédito
+const tienda = (new URLSearchParams(location.search).get("t") || "").trim().toLowerCase();
 let ref = new URLSearchParams(location.search).get("ref") || "";
 try { if (ref) localStorage.setItem("ref", ref); else ref = localStorage.getItem("ref") || ""; } catch {}
 const cart = new Map(); // product_id -> qty
@@ -21,12 +22,15 @@ async function init() {
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(() => {});
   if (!configured) { $("#subtitle").textContent = "Catálogo no configurado"; hideSplash(500); return; }
 
-  const [s, p] = await Promise.all([
-    supabase.from("settings").select("business_name, whatsapp, discount_levels").eq("id", 1).maybeSingle(),
-    supabase.from("products").select("id, name, category, public_price, prices, image_url, images, description").eq("active", true).order("name"),
-  ]);
-  if (s.error || p.error) { $("#subtitle").textContent = "No se pudo cargar el catálogo"; hideSplash(500); return; }
-  settings = s.data || { business_name: "Catálogo", whatsapp: "", discount_levels: [0] };
+  // ?t=NOMBRE indica de qué usuario es el catálogo; sin ?t= se abre la tienda principal (enlaces antiguos)
+  const sq = supabase.from("settings").select("id, owner_id, slug, business_name, whatsapp, discount_levels");
+  const s = await (tienda ? sq.eq("slug", tienda) : sq.eq("is_default", true)).maybeSingle();
+  if (s.error) { $("#subtitle").textContent = "No se pudo cargar el catálogo"; hideSplash(500); return; }
+  if (!s.data) { $("#title").textContent = "Catálogo"; $("#subtitle").textContent = "Este catálogo no existe o el enlace está mal escrito"; $("#empty").classList.remove("hidden"); hideSplash(500); return; }
+  const p = await supabase.from("products").select("id, name, category, public_price, prices, image_url, images, description")
+    .eq("owner_id", s.data.owner_id).eq("active", true).order("name");
+  if (p.error) { $("#subtitle").textContent = "No se pudo cargar el catálogo"; hideSplash(500); return; }
+  settings = s.data;
   products = p.data.map((x) => ({ ...x, public_price: Number(x.public_price), prices: x.prices || {} }));
   try { localStorage.setItem("businessName", settings.business_name || ""); } catch {}
 
@@ -176,6 +180,7 @@ $("#btnSend").addEventListener("click", async () => {
     p_nombre: name, p_telefono: phone, p_nota: note, p_descuento: discount,
     p_items: items.map((i) => ({ product_id: i.id, qty: i.qty })),
     p_ref: ref || null,
+    p_tienda: tienda || null,
   });
   if (error) console.error("No se pudo registrar el pedido:", error.message);
   else number = data;

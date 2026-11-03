@@ -63,8 +63,8 @@
   <header class="topbar">
     <div><h1 id="title">Pedidos</h1><div class="sub" id="subtitle"></div></div>
     <div class="tools">
-      <button class="iconbtn" data-theme-toggle aria-label="Cambiar tema">🌙</button>
       <button class="iconbtn" id="btnRefresh" aria-label="Actualizar">↻</button>
+      <button class="userchip" id="userChip" aria-label="Mi cuenta"><span class="avatar" id="userAvatar">?</span><span class="uname" id="userName"></span></button>
     </div>
   </header>
   <main id="view"></main>
@@ -169,6 +169,22 @@
     <div class="actions">
       <button class="btn" id="btnQrShare">Compartir</button>
       <button class="btn primary" id="btnQrDownload">Descargar imagen</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- Diálogo: mi cuenta -->
+<dialog id="dlgUser">
+  <div class="dlg-head"><h2>Mi cuenta</h2><button class="close" data-close>✕</button></div>
+  <div class="dlg-body center">
+    <div class="avatar big" id="dlgUserAvatar">?</div>
+    <div class="bold" style="font-size:18px" id="dlgUserName"></div>
+    <div class="muted small" id="dlgUserEmail"></div>
+    <div class="muted" id="dlgUserBusiness" style="margin-top:4px"></div>
+    <p class="muted small mt">Tus productos, clientes y pedidos son solo tuyos: otros usuarios no los ven.</p>
+    <div class="actions">
+      <button class="btn" id="btnUserLock">🔒 Bloquear ahora</button>
+      <button class="btn danger" id="btnUserLogout">Cerrar sesión</button>
     </div>
   </div>
 </dialog>
