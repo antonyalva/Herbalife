@@ -99,12 +99,39 @@ async function refresh() {
   try { await loadAll(); render(); } catch (e) { console.error(e); }
   refreshing = false;
 }
-$("#btnRefresh").addEventListener("click", async () => { await refresh(); toast("Actualizado"); });
+// Deslizar hacia abajo (desde arriba de la lista) para actualizar
+const PTR_MAX = 72;
+let ptrStart = null, ptrDist = 0;
+const ptr = $("#ptr");
+document.addEventListener("touchstart", (e) => {
+  ptrStart = null;
+  if ($("#app").classList.contains("hidden") || $$("dialog[open]").length || window.scrollY > 0) return;
+  ptrStart = e.touches[0].clientY;
+}, { passive: true });
+document.addEventListener("touchmove", (e) => {
+  if (ptrStart == null) return;
+  const d = e.touches[0].clientY - ptrStart;
+  if (d <= 0 || window.scrollY > 0) { ptrDist = 0; ptr.classList.remove("show", "ready"); ptr.style.transform = ""; return; }
+  ptrDist = Math.min(d * 0.5, PTR_MAX);
+  ptr.classList.add("show");
+  ptr.classList.toggle("ready", ptrDist >= PTR_MAX);
+  ptr.style.transform = `translate(-50%, ${ptrDist}px) rotate(${ptrDist * 4}deg)`;
+}, { passive: true });
+document.addEventListener("touchend", async () => {
+  if (ptrStart == null) return;
+  ptrStart = null;
+  if (ptrDist >= PTR_MAX) {
+    ptr.classList.add("loading"); ptr.style.transform = `translate(-50%, ${PTR_MAX}px)`;
+    await refresh(); toast("Actualizado");
+  }
+  ptr.classList.remove("show", "ready", "loading"); ptr.style.transform = ""; ptrDist = 0;
+});
 
 // Usuario sin "@" => correo interno (p. ej. "antony" => "antony@minegocio.app"). Así se entra con un usuario corto.
 const LOGIN_DOMAIN = "minegocio.app";
 const toEmail = (u) => { u = String(u || "").trim().toLowerCase(); return u.includes("@") ? u : `${u}@${LOGIN_DOMAIN}`; };
-const displayUser = (email) => String(email || "").replace(new RegExp(`@${LOGIN_DOMAIN}$`), "");
+const displayUser = (email) => String(email || "").replace(new RegExp(`@${LOGIN_DOMAIN}$`), "");  // lo que se escribe en el login
+const displayName = (email) => String(email || "").split("@")[0];                                     // lo que se muestra en pantalla
 
 // locked=true: la sesión se cerró por inactividad; solo se pide la contraseña (el usuario queda recordado)
 function showLogin(locked = false) {
@@ -115,7 +142,7 @@ function showLogin(locked = false) {
   try { email = localStorage.getItem("lastEmail") || ""; } catch {}
   const lockMode = locked && !!email;
   $("#loginTitle").textContent = lockMode ? "🔒 Bloqueado" : "Hola de nuevo 👋";
-  $("#loginSub").textContent = lockMode ? `Por seguridad, ingresa la contraseña de ${displayUser(email)} para continuar` : "Ingresa para gestionar tu negocio";
+  $("#loginSub").textContent = lockMode ? `Por seguridad, ingresa la contraseña de ${displayName(email)} para continuar` : "Ingresa para gestionar tu negocio";
   f.email.value = displayUser(email);
   f.email.readOnly = lockMode;
   f.email.closest("label").classList.toggle("hidden", lockMode);
@@ -200,7 +227,7 @@ const slugify = (s) => {
   return v.length >= 2 ? v : "tienda";
 };
 async function createSettings() {
-  const base = slugify(displayUser(state.user?.email));
+  const base = slugify(displayName(state.user?.email));
   for (let i = 0; i < 5; i++) {
     const slug = i === 0 ? base : `${base.slice(0, 24)}-${Math.random().toString(36).slice(2, 6)}`;
     const { data, error } = await supabase.from("settings").insert({ slug }).select().single();
@@ -211,12 +238,12 @@ async function createSettings() {
 }
 
 function renderUserChip() {
-  const name = displayUser(state.user?.email) || "Usuario";
+  const name = displayName(state.user?.email) || "Usuario";
   $("#userName").textContent = name;
   $("#userAvatar").textContent = name.slice(0, 1).toUpperCase();
 }
 $("#userChip").addEventListener("click", () => {
-  const name = displayUser(state.user?.email) || "Usuario";
+  const name = displayName(state.user?.email) || "Usuario";
   $("#dlgUserAvatar").textContent = name.slice(0, 1).toUpperCase();
   $("#dlgUserName").textContent = name;
   $("#dlgUserEmail").textContent = state.user?.email && state.user.email !== `${name}@${LOGIN_DOMAIN}` ? state.user.email : "";
@@ -821,7 +848,7 @@ function renderSettings() {
     </div>
 
     <div class="card">
-      <p class="muted mb">Sesión iniciada como <b>${esc(displayUser(state.user?.email))}</b>.</p>
+      <p class="muted mb">Sesión iniciada como <b>${esc(displayName(state.user?.email))}</b>.</p>
       <button class="btn danger block" id="btnLogout">Cerrar sesión</button>
     </div>`;
 
