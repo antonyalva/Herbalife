@@ -100,7 +100,12 @@ async function refresh() {
 }
 $("#btnRefresh").addEventListener("click", async () => { await refresh(); toast("Actualizado"); });
 
-// locked=true: la sesión se cerró por inactividad; solo se pide la contraseña (el correo queda recordado)
+// Usuario sin "@" => correo interno (p. ej. "antony" => "antony@minegocio.app"). Así se entra con un usuario corto.
+const LOGIN_DOMAIN = "minegocio.app";
+const toEmail = (u) => { u = String(u || "").trim().toLowerCase(); return u.includes("@") ? u : `${u}@${LOGIN_DOMAIN}`; };
+const displayUser = (email) => String(email || "").replace(new RegExp(`@${LOGIN_DOMAIN}$`), "");
+
+// locked=true: la sesión se cerró por inactividad; solo se pide la contraseña (el usuario queda recordado)
 function showLogin(locked = false) {
   $("#app").classList.add("hidden");
   $("#login").classList.remove("hidden");
@@ -109,8 +114,8 @@ function showLogin(locked = false) {
   try { email = localStorage.getItem("lastEmail") || ""; } catch {}
   const lockMode = locked && !!email;
   $("#loginTitle").textContent = lockMode ? "🔒 Bloqueado" : "Hola de nuevo 👋";
-  $("#loginSub").textContent = lockMode ? `Por seguridad, ingresa la contraseña de ${email} para continuar` : "Ingresa para gestionar tu negocio";
-  f.email.value = email;
+  $("#loginSub").textContent = lockMode ? `Por seguridad, ingresa la contraseña de ${displayUser(email)} para continuar` : "Ingresa para gestionar tu negocio";
+  f.email.value = displayUser(email);
   f.email.readOnly = lockMode;
   f.email.closest("label").classList.toggle("hidden", lockMode);
   f.password.value = "";
@@ -139,10 +144,10 @@ $("#loginForm").addEventListener("submit", async (e) => {
   const f = e.target;
   const btn = $("button[type=submit]", f);
   btn.disabled = true; $("#loginError").textContent = "";
-  const email = f.email.value.trim();
+  const email = toEmail(f.email.value);
   const { error } = await supabase.auth.signInWithPassword({ email, password: f.password.value });
   btn.disabled = false;
-  if (error) { $("#loginError").textContent = "Correo o contraseña incorrectos."; return; }
+  if (error) { $("#loginError").textContent = "Usuario o contraseña incorrectos."; return; }
   f.reset();
   try { localStorage.setItem("lastEmail", email); localStorage.setItem("lastActive", String(Date.now())); } catch {}
   lastTouch = Date.now();

@@ -36,7 +36,9 @@ sw.js, manifest.webmanifest, icons/ → para que se instale como app
    export const SUPABASE_URL = "https://xxxx.supabase.co";
    export const SUPABASE_ANON_KEY = "eyJ...";
    ```
-4. **Authentication → Users → Add user → Create new user**: tu correo y contraseña para entrar a la app.
+4. **Authentication → Users → Add user → Create new user**: el usuario y contraseña para entrar a la app.
+   - Puedes entrar con un **usuario corto** en vez de un correo: en Supabase crea el usuario con el correo `TUUSUARIO@minegocio.app` (ej. `antony@minegocio.app`) y marca **Auto Confirm User**. En la app escribes solo `antony`. (El dominio `minegocio.app` es interno; no necesita existir.)
+   - Si prefieres un correo real, créalo con ese correo y en la app escríbelo completo.
 5. (Recomendado) **Authentication → Providers → Email**: desactiva *"Allow new users to sign up"* para que nadie más pueda registrarse.
 
 ### 2. Publicar la app en internet (gratis)
