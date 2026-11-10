@@ -1,4 +1,4 @@
-import { supabase, configured } from "./db.js";
+import { supabasePublic as supabase, configured } from "./db.js";
 import { productPrice, fmt, waLink, round2 } from "./pricing.js";
 import { initTheme, hideSplash } from "./theme.js";
 
