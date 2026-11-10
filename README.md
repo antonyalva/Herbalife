@@ -72,9 +72,9 @@ Un afiliado es otro usuario que vende **tu** catálogo: no tiene productos propi
 Para sumar un afiliado:
 1. Ejecuta una sola vez `supabase/migracion-06-afiliados.sql` en Supabase → SQL Editor.
 2. Crea su usuario en **Authentication → Users** (ej. `maria@minegocio.app`, con *Auto Confirm User*).
-3. En la app: **Ajustes → Mi equipo → Agregar afiliado**, escribe `maria`.
+3. En la app: pestaña **Equipo → +**, escribe `maria` (o su correo completo si no termina en `@minegocio.app`).
 
-El afiliado entra con su usuario, pone su WhatsApp en Ajustes y comparte su propio enlace (`catalogo.html?t=maria`); los pedidos de ese enlace le llegan a él. En **Mi equipo** ves, por afiliado y por mes, cuánto vendió, cuánto te compra a precio de afiliado y tu ganancia. Solo hay un nivel: un afiliado no puede tener afiliados.
+El afiliado entra con su usuario, pone su WhatsApp en Ajustes y comparte su propio enlace (`catalogo.html?t=maria`); los pedidos de ese enlace le llegan a él. En la pestaña **Equipo** ves, por afiliado y por mes, cuánto vendió, cuánto te compra a precio de afiliado y tu ganancia; al tocar un afiliado ves qué productos vendió y puedes enviarle el resumen por WhatsApp (el historial por mes y el detalle por producto requieren `supabase/migracion-08-modulo-equipo.sql`). Solo hay un nivel: un afiliado no puede tener afiliados.
 
 ### Pago y entrega de cada pedido
 Cada pedido tiene dos marcas independientes: **cobrado** y **entregado** (puedes cobrar por adelantado y entregar después, o al revés). Se marcan con un toque desde la tarjeta del pedido; cuando tiene ambas queda como *Completado*. "Por cobrar" suma todos los pedidos sin pagar.

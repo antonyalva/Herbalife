@@ -24,6 +24,8 @@ const state = {
   customers: [],
   orders: [],
   team: [],        // dueño: resumen del mes de cada afiliado
+  teamMonth: null, // mes que se está viendo en Equipo ("2026-10-01"; null = mes actual)
+  teamByMonth: false, // la base de datos permite consultar otros meses (migración 08)
   sponsor: null,   // afiliado: datos de su proveedor { negocio, whatsapp, descuento }
   view: "pedidos",
   orderFilter: "todos",
@@ -244,11 +246,17 @@ async function loadAll() {
     if (cat.error) throw cat.error;
     state.products = cat.data.map(numProduct);
     state.sponsor = sp.data?.[0] || null;
-  } else if (hasTeamFeature()) {
-    const t = await supabase.rpc("mi_equipo");
-    if (!t.error) state.team = t.data.map((a) => ({ ...a, ventas: Number(a.ventas), compras: Number(a.compras), ganancia: Number(a.ganancia) }));
-  }
+  } else await loadTeam();
   try { localStorage.setItem("businessName", state.settings.business_name || ""); } catch {}
+}
+/** Dueño: resumen de cada afiliado en el mes elegido */
+async function loadTeam() {
+  state.team = [];
+  if (isAffiliate() || !hasTeamFeature()) return;
+  let t = await supabase.rpc("mi_equipo", { p_mes: state.teamMonth });
+  state.teamByMonth = !t.error;
+  if (t.error) { state.teamMonth = null; t = await supabase.rpc("mi_equipo"); }   // sin la migración 08: solo el mes actual
+  if (!t.error) state.team = t.data.map((a) => ({ ...a, ventas: Number(a.ventas), compras: Number(a.compras), ganancia: Number(a.ganancia) }));
 }
 const numProduct = (p) => ({ ...p, public_price: Number(p.public_price), cost: p.cost == null ? null : Number(p.cost), prices: p.prices || {} });
 const numOrder = (o) => ({
@@ -310,16 +318,22 @@ $("#fab").addEventListener("click", () => {
   if (state.view === "pedidos") openOrderDialog();
   if (state.view === "clientes") openCustomerDialog();
   if (state.view === "productos") openProductDialog();
+  if (state.view === "equipo") openAddAffiliate();
 });
 
 $$("dialog [data-close]").forEach((b) => b.addEventListener("click", () => b.closest("dialog").close()));
 
 function render() {
-  const titles = { pedidos: "Pedidos", clientes: "Clientes", productos: "Productos", ajustes: "Ajustes" };
+  // La pestaña Equipo es solo para quien puede tener afiliados (no para un afiliado)
+  const canTeam = !isAffiliate() && hasTeamFeature();
+  $('.tabbar button[data-view="equipo"]').classList.toggle("hidden", !canTeam);
+  if (state.view === "equipo" && !canTeam) state.view = "pedidos";
+  $$(".tabbar button").forEach((x) => x.classList.toggle("active", x.dataset.view === state.view));
+  const titles = { pedidos: "Pedidos", clientes: "Clientes", productos: "Productos", equipo: "Mi equipo", ajustes: "Ajustes" };
   $("#title").textContent = titles[state.view];
   $("#subtitle").textContent = state.settings?.business_name || "";
   $("#fab").classList.toggle("hidden", state.view === "ajustes" || (state.view === "productos" && isAffiliate()));
-  ({ pedidos: renderOrders, clientes: renderCustomers, productos: renderProducts, ajustes: renderSettings })[state.view]();
+  ({ pedidos: renderOrders, clientes: renderCustomers, productos: renderProducts, equipo: renderTeam, ajustes: renderSettings })[state.view]();
 }
 
 // =====================================================================
@@ -881,7 +895,7 @@ function renderSettings() {
       <p class="error" id="settingsError"></p>
       <button class="btn primary block" type="submit">Guardar ajustes</button>
     </form>
-    ${isAffiliate() ? sponsorCard() : hasTeamFeature() ? teamCard() : ""}
+    ${isAffiliate() ? sponsorCard() : ""}
 
     <div class="card">
       <h2 style="font-size:16px">Compartir catálogo</h2>
@@ -947,7 +961,6 @@ function renderSettings() {
     if (error) { err.textContent = error.code === "23505" ? "Ese nombre corto ya lo usa otro usuario; elige otro." : "No se pudo guardar: " + error.message; return; }
     state.settings = data; toast("Ajustes guardados"); renderSettings();
   });
-  bindTeam();
   $$("[data-copy]").forEach((b) => b.addEventListener("click", async () => {
     try { await navigator.clipboard.writeText(catalogUrl(+b.dataset.copy)); toast("Enlace copiado"); } catch { prompt("Copia el enlace:", catalogUrl(+b.dataset.copy)); }
   }));
@@ -981,58 +994,165 @@ function sponsorCard() {
     </div>`;
 }
 
-/** Dueño: sus afiliados con lo que vendieron este mes */
-function teamCard() {
-  const t = state.team;
-  const sum = (k) => round2(t.reduce((a, x) => a + x[k], 0));
-  return `<div class="card">
-      <h2 style="font-size:16px">👥 Mi equipo</h2>
-      <p class="muted mb">Tus afiliados venden tu catálogo con su propio enlace y te compran con <b>${affiliatePct()}% de descuento</b> sobre el precio público.</p>
-      ${t.length ? `<div class="stats">
-        <div class="stat"><div class="label">Vendieron (mes)</div><div class="value">${fmt(sum("ventas"))}</div></div>
-        <div class="stat"><div class="label">Te compran</div><div class="value" style="color:var(--warn)">${fmt(sum("compras"))}</div></div>
-        <div class="stat"><div class="label">Tu ganancia</div><div class="value profit">${fmt(sum("ganancia"))}</div></div>
-      </div>` : ""}
-      ${t.map((a) => `<div class="link-box">
-        <div class="row between">
-          <div class="grow"><div class="bold ellipsis">${esc(a.usuario)} <span class="muted" style="font-weight:400">· ${esc(a.negocio)}</span></div>
-            <div class="muted small">${a.pedidos} pedido${a.pedidos === 1 ? "" : "s"} este mes · vendió ${fmt(a.ventas)}</div>
-            <div class="muted small">Te compra ${fmt(a.compras)} · tu ganancia <span class="profit">${fmt(a.ganancia)}</span></div></div>
-          <div class="btns">
-            <button type="button" class="btn sm" data-team-link="${esc(a.tienda)}">Enlace</button>
-            <button type="button" class="btn sm danger" data-team-rm="${a.afiliado_id}" data-team-name="${esc(a.usuario)}">Quitar</button>
-          </div>
-        </div></div>`).join("")}
-      <form id="formTeam" class="mt">
-        <label><span>Agregar afiliado (su usuario)</span><input type="text" name="usuario" required autocapitalize="none" spellcheck="false" placeholder="Ej. maria"></label>
-        <p class="error" id="teamError"></p>
-        <button class="btn block" type="submit">Agregar a mi equipo</button>
-      </form>
-      <p class="muted small mt">Primero crea su usuario en Supabase (Authentication → Users), igual que el tuyo. Al agregarlo recibe tu catálogo completo; no ve tu costo ni tus clientes.</p>
-    </div>`;
+// =====================================================================
+//  EQUIPO (afiliados del dueño)
+// =====================================================================
+const monthStart = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+const teamMonthDate = () => (state.teamMonth ? new Date(state.teamMonth + "T12:00:00") : new Date());
+function teamMonthLabel() {
+  const t = teamMonthDate().toLocaleDateString("es-PE", { month: "long", year: "numeric" });
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+async function shiftTeamMonth(delta) {
+  const b = teamMonthDate();
+  const m = monthStart(new Date(b.getFullYear(), b.getMonth() + delta, 1));
+  state.teamMonth = m >= monthStart(new Date()) ? null : m;   // no hay meses futuros
+  await loadTeam(); renderTeam();
+}
+function storeUrl(slug) {
+  const u = new URL("catalogo.html", location.href); u.searchParams.set("t", slug);
+  return u.href;
 }
 
-function bindTeam() {
-  $("#formTeam")?.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const f = e.target; const err = $("#teamError"); err.textContent = "";
-    const btn = $("button[type=submit]", f); btn.disabled = true;
-    const { data, error } = await supabase.rpc("agregar_afiliado", { p_usuario: f.usuario.value });
-    btn.disabled = false;
-    if (error) { err.textContent = error.message; return; }
-    toast(`${data} ya es parte de tu equipo`);
-    await loadAll(); renderSettings();
+function renderTeam() {
+  const t = state.team;
+  const sum = (k) => round2(t.reduce((a, x) => a + x[k], 0));
+  const isCur = !state.teamMonth;
+  const nav = state.teamByMonth ? `<div class="monthnav">
+      <button type="button" class="btn sm" id="teamPrev" aria-label="Mes anterior">‹</button>
+      <div class="bold">${teamMonthLabel()}${isCur ? ' <span class="muted" style="font-weight:400">· mes actual</span>' : ""}</div>
+      <button type="button" class="btn sm" id="teamNext" aria-label="Mes siguiente" ${isCur ? "disabled" : ""}>›</button>
+    </div>` : "";
+
+  $("#view").innerHTML = t.length ? `
+    ${nav}
+    <div class="stats">
+      <div class="stat"><div class="label">Vendieron</div><div class="value">${fmt(sum("ventas"))}</div></div>
+      <div class="stat"><div class="label">Te compran</div><div class="value" style="color:var(--warn)">${fmt(sum("compras"))}</div></div>
+      <div class="stat"><div class="label">Tu ganancia</div><div class="value profit">${fmt(sum("ganancia"))}</div></div>
+    </div>
+    <details class="help">
+      <summary>¿Qué significan estos números?</summary>
+      <p><b>Vendieron:</b> lo que tus afiliados cobraron a sus clientes.</p>
+      <p><b>Te compran:</b> lo que te pagan a ti por esos productos, a precio de afiliado (precio público menos ${affiliatePct()}%).</p>
+      <p><b>Tu ganancia:</b> lo que te compran menos lo que a ti te cuestan esos productos.</p>
+      <p>Los pedidos cancelados no cuentan. El % de afiliado se cambia en Ajustes.</p>
+    </details>
+    ${t.map((a) => `<div class="card tap" data-aff="${a.afiliado_id}">
+      <div class="row">
+        <span class="avatar soft">${esc(a.usuario.slice(0, 1).toUpperCase())}</span>
+        <div class="grow">
+          <div class="bold ellipsis">${esc(a.usuario)}</div>
+          <div class="muted small ellipsis">${esc(a.negocio)} · ${a.pedidos} pedido${a.pedidos === 1 ? "" : "s"}</div>
+        </div>
+        <div class="right"><div class="muted small">Tu ganancia</div><div class="price profit">${fmt(a.ganancia)}</div></div>
+      </div>
+      <div class="price-grid"><span>Vendió<b>${fmt(a.ventas)}</b></span><span>Te compra<b>${fmt(a.compras)}</b></span>${a.whatsapp ? "" : '<span class="cost">Sin WhatsApp<b>no recibe pedidos</b></span>'}</div>
+    </div>`).join("")}
+    <p class="muted small center mt">Toca un afiliado para ver qué vendió. Toca + para agregar otro.</p>`
+  : `<div class="card">
+      <div class="empty" style="padding:8px 0 16px"><div class="big">🤝</div><b>Arma tu equipo de venta</b></div>
+      <p class="muted">Un afiliado vende <b>tu catálogo</b> con su propio enlace y te compra los productos con <b>${affiliatePct()}% de descuento</b> sobre el precio público. Tú ganas la diferencia con tu costo sin atender a sus clientes.</p>
+      <ul class="steps">
+        <li>Ve los mismos productos, fotos y precios al público que tú; se actualizan solos.</li>
+        <li>Nunca ve tu costo ni tus clientes, y tú no ves los suyos.</li>
+        <li>Aquí verás cuánto vendió cada uno y cuánto te compra cada mes.</li>
+      </ul>
+      <button type="button" class="btn primary block mt" id="btnFirstAff">Agregar mi primer afiliado</button>
+    </div>`;
+
+  $("#teamPrev")?.addEventListener("click", () => shiftTeamMonth(-1));
+  $("#teamNext")?.addEventListener("click", () => shiftTeamMonth(+1));
+  $("#btnFirstAff")?.addEventListener("click", openAddAffiliate);
+  $$("[data-aff]", $("#view")).forEach((c) => c.addEventListener("click", () => openAffiliate(c.dataset.aff)));
+}
+
+function openAddAffiliate() {
+  const f = $("#formTeam");
+  f.reset(); $("#teamError").textContent = "";
+  $("#teamPct").textContent = affiliatePct();
+  $("#dlgAddAffiliate").showModal();
+  setTimeout(() => f.usuario.focus(), 50);
+}
+$("#formTeam").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const f = e.target; const err = $("#teamError"); err.textContent = "";
+  const btn = $("button[type=submit]", f); btn.disabled = true;
+  const usuario = f.usuario.value.trim();
+  const { data, error } = await supabase.rpc("agregar_afiliado", { p_usuario: usuario });
+  btn.disabled = false;
+  if (error) {
+    err.textContent = error.message + (/^No existe/.test(error.message) && !usuario.includes("@") ? " Si su usuario no termina en @minegocio.app, escribe su correo completo." : "");
+    return;
+  }
+  $("#dlgAddAffiliate").close();
+  toast(`${data} ya es parte de tu equipo`);
+  await loadTeam(); render();
+});
+
+async function openAffiliate(id) {
+  const a = state.team.find((x) => x.afiliado_id === id);
+  if (!a) return;
+  const url = storeUrl(a.tienda);
+  const body = $("#affiliateBody");
+  body.innerHTML = `
+    <div class="center">
+      <div class="avatar big">${esc(a.usuario.slice(0, 1).toUpperCase())}</div>
+      <div class="bold" style="font-size:18px">${esc(a.usuario)}</div>
+      <div class="muted">${esc(a.negocio)}</div>
+    </div>
+    <div class="link-box mt">
+      <div class="bold">🔗 Su catálogo</div>
+      <div class="muted small ellipsis" style="margin:2px 0 8px">${esc(url)}</div>
+      <div class="btns">
+        <button type="button" class="btn sm" id="affCopy">Copiar enlace</button>
+        <a class="btn sm" href="${esc(url)}" target="_blank">Ver catálogo</a>
+      </div>
+    </div>
+    <h3 class="mt" style="font-size:15px">${teamMonthLabel()}</h3>
+    <div class="totals" style="margin-top:6px">
+      <div class="row between"><span class="muted">Pedidos</span><span>${a.pedidos}</span></div>
+      <div class="row between"><span class="muted">Vendió a sus clientes</span><span>${fmt(a.ventas)}</span></div>
+      <div class="row between"><span class="muted">Tu ganancia</span><span class="profit">${fmt(a.ganancia)}</span></div>
+      <div class="row between grand"><span>Te compra</span><span>${fmt(a.compras)}</span></div>
+    </div>
+    <h3 class="mt" style="font-size:15px">Productos que vendió</h3>
+    <div id="affProducts"><p class="muted">Cargando…</p></div>
+    ${a.whatsapp ? `<button type="button" class="btn wa block mt" id="affWa">Enviarle el resumen por WhatsApp</button>` : `<p class="muted small mt">⚠️ Aún no puso su WhatsApp en Ajustes: los pedidos de su catálogo no le llegan por WhatsApp.</p>`}
+    <div class="actions"><button type="button" class="btn danger" id="affRemove">Quitar del equipo</button></div>`;
+  $("#dlgAffiliate").showModal();
+
+  $("#affCopy").addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(url); toast("Enlace copiado"); } catch { prompt("Copia el enlace:", url); }
   });
-  $$("[data-team-link]").forEach((b) => b.addEventListener("click", async () => {
-    const u = new URL("catalogo.html", location.href); u.searchParams.set("t", b.dataset.teamLink);
-    try { await navigator.clipboard.writeText(u.href); toast("Enlace de su catálogo copiado"); } catch { prompt("Copia el enlace:", u.href); }
-  }));
-  $$("[data-team-rm]").forEach((b) => b.addEventListener("click", async () => {
-    if (!confirm(`¿Quitar a ${b.dataset.teamName} de tu equipo? Conserva sus clientes y pedidos, pero deja de ver tu catálogo.`)) return;
-    const { error } = await supabase.rpc("quitar_afiliado", { p_afiliado: b.dataset.teamRm });
+  $("#affRemove").addEventListener("click", async () => {
+    if (!confirm(`¿Quitar a ${a.usuario} de tu equipo? Conserva sus clientes y pedidos, pero deja de ver tu catálogo.`)) return;
+    const { error } = await supabase.rpc("quitar_afiliado", { p_afiliado: a.afiliado_id });
     if (error) { toast("Error: " + error.message); return; }
-    toast("Afiliado quitado"); await loadAll(); renderSettings();
-  }));
+    $("#dlgAffiliate").close(); toast("Afiliado quitado");
+    await loadTeam(); render();
+  });
+
+  // Qué productos vendió (para saber qué te va a pedir); nunca se muestran sus clientes
+  let items = [];
+  const r = await supabase.rpc("ventas_afiliado", { p_afiliado: a.afiliado_id, p_mes: state.teamMonth });
+  const box = $("#affProducts");
+  if (!box || !$("#dlgAffiliate").open) return;
+  if (r.error) box.innerHTML = `<p class="muted small">El detalle por producto estará disponible al ejecutar la migración 08 en Supabase.</p>`;
+  else {
+    items = r.data.map((i) => ({ ...i, compras: Number(i.compras) }));
+    box.innerHTML = items.length
+      ? items.map((i) => `<div class="item-line"><div class="grow"><div>${esc(i.producto)}</div><div class="muted">${i.cantidad} unidad${i.cantidad === 1 ? "" : "es"}</div></div><div class="bold">${fmt(i.compras)}</div></div>`).join("")
+      : `<p class="muted">Sin ventas en este mes.</p>`;
+  }
+  $("#affWa")?.addEventListener("click", () => {
+    const lines = items.map((i) => `• ${i.cantidad} × ${i.producto} — ${fmt(i.compras)}`);
+    const msg = `Hola ${a.usuario}, este es tu resumen de ${teamMonthLabel()}:\n` +
+      `Pedidos: ${a.pedidos}\nVendiste: ${fmt(a.ventas)}\n` +
+      (lines.length ? `\nProductos a precio de afiliado:\n${lines.join("\n")}\n` : "") +
+      `\n*Total a pagarme: ${fmt(a.compras)}*`;
+    window.open(waLink(a.whatsapp, msg), "_blank");
+  });
 }
 
 // ---- Código QR ----

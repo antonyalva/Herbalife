@@ -73,6 +73,7 @@
     <button data-view="pedidos" class="active"><span class="ico">🧾</span>Pedidos</button>
     <button data-view="clientes"><span class="ico">👥</span>Clientes</button>
     <button data-view="productos"><span class="ico">📦</span>Productos</button>
+    <button data-view="equipo" class="hidden"><span class="ico">🤝</span>Equipo</button>
     <button data-view="ajustes"><span class="ico">⚙️</span>Ajustes</button>
   </nav>
 </div>
@@ -171,6 +172,29 @@
       <button class="btn primary" id="btnQrDownload">Descargar imagen</button>
     </div>
   </div>
+</dialog>
+
+<!-- Diálogo: agregar afiliado -->
+<dialog id="dlgAddAffiliate">
+  <div class="dlg-head"><h2>Agregar afiliado</h2><button class="close" data-close>✕</button></div>
+  <form id="formTeam" class="dlg-body">
+    <ol class="steps">
+      <li><b>Crea su usuario</b> en Supabase → Authentication → Users (igual que el tuyo, con <i>Auto Confirm User</i>).</li>
+      <li><b>Escríbelo aquí</b> para sumarlo a tu equipo.</li>
+      <li><b>Él inicia sesión</b>, pone su WhatsApp en Ajustes y comparte su enlace.</li>
+    </ol>
+    <label><span>Usuario o correo del afiliado</span><input type="text" name="usuario" required autocapitalize="none" spellcheck="false" placeholder="Ej. maria  o  maria@gmail.com"></label>
+    <p class="muted small" style="margin-top:-6px">Escribe lo mismo que él usa para iniciar sesión. El nombre corto solo sirve si su usuario termina en @minegocio.app; con cualquier otro correo, escríbelo completo.</p>
+    <p class="muted small">Recibirá tu catálogo completo y te comprará con <b><span id="teamPct">25</span>% de descuento</b>. Solo se pueden agregar usuarios nuevos, sin productos propios.</p>
+    <p class="error" id="teamError"></p>
+    <div class="actions"><button type="submit" class="btn primary">Agregar a mi equipo</button></div>
+  </form>
+</dialog>
+
+<!-- Diálogo: detalle de un afiliado -->
+<dialog id="dlgAffiliate">
+  <div class="dlg-head"><h2>Afiliado</h2><button class="close" data-close>✕</button></div>
+  <div class="dlg-body" id="affiliateBody"></div>
 </dialog>
 
 <!-- Diálogo: mi cuenta -->
