@@ -2,6 +2,7 @@
 --  Esquema de base de datos para la app "Mi Negocio Herbalife"
 --  (instalación nueva; incluye todo lo de las migraciones 01 a 05)
 --  Pegar completo en Supabase > SQL Editor > New query > Run
+--  Después ejecuta también migracion-06-afiliados.sql (equipo de afiliados).
 --
 --  Varios usuarios: cada usuario (Authentication > Users) tiene sus propios
 --  ajustes, productos, clientes y pedidos. La columna owner_id indica el dueño

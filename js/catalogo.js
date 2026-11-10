@@ -23,12 +23,14 @@ async function init() {
   if (!configured) { $("#subtitle").textContent = "Catálogo no configurado"; hideSplash(500); return; }
 
   // ?t=NOMBRE indica de qué usuario es el catálogo; sin ?t= se abre la tienda principal (enlaces antiguos)
-  const sq = supabase.from("settings").select("id, owner_id, slug, business_name, whatsapp, discount_levels");
-  const s = await (tienda ? sq.eq("slug", tienda) : sq.eq("is_default", true)).maybeSingle();
+  // sponsor_id: la tienda es de un afiliado y muestra los productos de su proveedor (los pedidos le llegan al afiliado)
+  const findStore = (cols) => { const q = supabase.from("settings").select(cols); return (tienda ? q.eq("slug", tienda) : q.eq("is_default", true)).maybeSingle(); };
+  let s = await findStore("id, owner_id, sponsor_id, slug, business_name, whatsapp, discount_levels");
+  if (s.error) s = await findStore("id, owner_id, slug, business_name, whatsapp, discount_levels"); // base de datos sin la migración 06
   if (s.error) { $("#subtitle").textContent = "No se pudo cargar el catálogo"; hideSplash(500); return; }
   if (!s.data) { $("#title").textContent = "Catálogo"; $("#subtitle").textContent = "Este catálogo no existe o el enlace está mal escrito"; $("#empty").classList.remove("hidden"); hideSplash(500); return; }
   const p = await supabase.from("products").select("id, name, category, public_price, prices, image_url, images, description")
-    .eq("owner_id", s.data.owner_id).eq("active", true).order("name");
+    .eq("owner_id", s.data.sponsor_id || s.data.owner_id).eq("active", true).order("name");
   if (p.error) { $("#subtitle").textContent = "No se pudo cargar el catálogo"; hideSplash(500); return; }
   settings = s.data;
   products = p.data.map((x) => ({ ...x, public_price: Number(x.public_price), prices: x.prices || {} }));

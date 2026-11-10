@@ -60,6 +60,22 @@ Cada usuario creado en **Authentication → Users** tiene sus propios productos,
 - Los enlaces antiguos sin `?t=` abren la **tienda principal** (el primer usuario que configuró la app).
 - Si la base ya existía antes de esta versión, ejecuta `supabase/migracion-05-multiusuario.sql` (en el archivo puedes indicar a qué usuario se asignan los datos actuales).
 
+### Afiliados (equipo de venta)
+Un afiliado es otro usuario que vende **tu** catálogo: no tiene productos propios, hereda los tuyos (nombres, fotos y precios al público) y te compra a **precio de afiliado** (precio público menos el % que fijas en Ajustes → "Descuento para mis afiliados", 25% por defecto).
+
+| Quién | Qué precios ve |
+|---|---|
+| Cliente final (catálogo público) | Solo el precio público |
+| Afiliado (en la app) | Precio público y su precio de afiliado (aparece como "Tu costo") |
+| Tú (dueño) | Precio público, precio de afiliado y tu costo real |
+
+Para sumar un afiliado:
+1. Ejecuta una sola vez `supabase/migracion-06-afiliados.sql` en Supabase → SQL Editor.
+2. Crea su usuario en **Authentication → Users** (ej. `maria@minegocio.app`, con *Auto Confirm User*).
+3. En la app: **Ajustes → Mi equipo → Agregar afiliado**, escribe `maria`.
+
+El afiliado entra con su usuario, pone su WhatsApp en Ajustes y comparte su propio enlace (`catalogo.html?t=maria`); los pedidos de ese enlace le llegan a él. En **Mi equipo** ves, por afiliado y por mes, cuánto vendió, cuánto te compra a precio de afiliado y tu ganancia. Solo hay un nivel: un afiliado no puede tener afiliados.
+
 ### 4. Compartir el catálogo con clientes
 En **Ajustes → Compartir catálogo** hay un enlace por cada nivel de descuento. Envíale a cada cliente el que le corresponde; verá los productos con *sus* precios y podrá armar su pedido y enviártelo por WhatsApp (al número que pongas en Ajustes).
 

@@ -23,6 +23,8 @@ const state = {
   products: [],
   customers: [],
   orders: [],
+  team: [],        // dueño: resumen del mes de cada afiliado
+  sponsor: null,   // afiliado: datos de su proveedor { negocio, whatsapp, descuento }
   view: "pedidos",
   orderFilter: "todos",
   search: { clientes: "", productos: "" },
@@ -213,6 +215,17 @@ async function loadAll() {
   state.products = p.data.map(numProduct);
   state.customers = c.data;
   state.orders = o.data.map(numOrder);
+  state.team = []; state.sponsor = null;
+  if (isAffiliate()) {
+    // Afiliado: no tiene productos propios; usa el catálogo de su proveedor y su costo es el precio de afiliado
+    const [cat, sp] = await Promise.all([supabase.rpc("catalogo_afiliado"), supabase.rpc("mi_proveedor")]);
+    if (cat.error) throw cat.error;
+    state.products = cat.data.map(numProduct);
+    state.sponsor = sp.data?.[0] || null;
+  } else if (hasTeamFeature()) {
+    const t = await supabase.rpc("mi_equipo");
+    if (!t.error) state.team = t.data.map((a) => ({ ...a, ventas: Number(a.ventas), compras: Number(a.compras), ganancia: Number(a.ganancia) }));
+  }
   try { localStorage.setItem("businessName", state.settings.business_name || ""); } catch {}
 }
 const numProduct = (p) => ({ ...p, public_price: Number(p.public_price), cost: p.cost == null ? null : Number(p.cost), prices: p.prices || {} });
@@ -259,6 +272,9 @@ $("#btnUserLogout").addEventListener("click", async () => {
 
 const levels = () => state.settings?.discount_levels || [35, 20, 10, 0];
 const costPct = () => state.settings?.cost_discount_pct ?? 50;
+const isAffiliate = () => !!state.settings?.sponsor_id;                               // vende el catálogo de otro usuario
+const hasTeamFeature = () => !!state.settings && "affiliate_discount_pct" in state.settings; // base de datos con la migración 06
+const affiliatePct = () => state.settings?.affiliate_discount_pct ?? 25;              // % que el dueño da a sus afiliados
 
 // ---------- navegación ----------
 $$(".tabbar button").forEach((b) => b.addEventListener("click", () => {
@@ -279,7 +295,7 @@ function render() {
   const titles = { pedidos: "Pedidos", clientes: "Clientes", productos: "Productos", ajustes: "Ajustes" };
   $("#title").textContent = titles[state.view];
   $("#subtitle").textContent = state.settings?.business_name || "";
-  $("#fab").classList.toggle("hidden", state.view === "ajustes");
+  $("#fab").classList.toggle("hidden", state.view === "ajustes" || (state.view === "productos" && isAffiliate()));
   ({ pedidos: renderOrders, clientes: renderCustomers, productos: renderProducts, ajustes: renderSettings })[state.view]();
 }
 
@@ -334,7 +350,7 @@ function orderCard(o) {
 
 // ---- nuevo pedido ----
 function openOrderDialog() {
-  if (!state.products.length) { toast("Primero registra productos"); return; }
+  if (!state.products.length) { toast(isAffiliate() ? "Tu proveedor aún no tiene productos en el catálogo" : "Primero registra productos"); return; }
   state.draft = { customer_id: "", discount_pct: levels()[0], items: [], note: "" };
   fillCustomerSelect();
   fillDiscountSelect($("#orderDiscount"), state.draft.discount_pct);
@@ -625,8 +641,11 @@ $("#btnDeleteCustomer").addEventListener("click", async () => {
 //  PRODUCTOS
 // =====================================================================
 function priceGrid(p) {
-  const realCost = p.cost != null && p.cost !== "";
-  return `<span class="cost">Tu costo${realCost ? '<em class="tag">real</em>' : ""}<b>${fmt(productCost(p, costPct()))}</b></span>` +
+  const realCost = !isAffiliate() && p.cost != null && p.cost !== "";
+  const cost = productCost(p, costPct());
+  const aff = state.team.length ? salePrice(p.public_price, affiliatePct()) : null;   // dueño con equipo: precio al que le vende a sus afiliados
+  return `<span class="cost">Tu costo${realCost ? '<em class="tag">real</em>' : ""}<b>${fmt(cost)}</b></span>` +
+    (aff != null ? `<span class="fixed">Afiliado<em class="tag">gano ${fmt(aff - cost)}</em><b>${fmt(aff)}</b></span>` : "") +
     levels().map((d) => {
       const fixed = p.prices?.[String(d)] != null;
       return `<span class="${fixed ? "fixed" : ""}">${d === 0 ? "Público" : d + "% dto."}${fixed ? '<em class="tag">fijo</em>' : ""}<b>${fmt(productPrice(p, d))}</b></span>`;
@@ -649,11 +668,14 @@ function renderProducts() {
       </div>
       <div class="price-grid">${priceGrid(p)}</div>
     </div>`).join("")
-    : `<div class="empty"><div class="big">📦</div>${q ? "Sin resultados" : "Aún no tienes productos. Toca + para agregar el primero."}</div>`}`;
+    : `<div class="empty"><div class="big">📦</div>${q ? "Sin resultados" : isAffiliate() ? "Tu proveedor aún no tiene productos en el catálogo." : "Aún no tienes productos. Toca + para agregar el primero."}</div>`}`;
 
   const inp = $("#searchProducts");
   inp.addEventListener("input", () => { state.search.productos = inp.value; renderProducts(); const i = $("#searchProducts"); i.focus(); i.setSelectionRange(i.value.length, i.value.length); });
-  $$("[data-product]", $("#view")).forEach((c) => c.addEventListener("click", () => openProductDialog(c.dataset.product)));
+  $$("[data-product]", $("#view")).forEach((c) => c.addEventListener("click", () => {
+    if (isAffiliate()) { toast("El catálogo lo administra tu proveedor"); return; }
+    openProductDialog(c.dataset.product);
+  }));
 }
 
 let productImages = []; // fotos ya guardadas que se conservan (URLs)
@@ -802,13 +824,15 @@ function renderSettings() {
       <h2 style="font-size:16px" class="mb">Mi negocio</h2>
       <label><span>Nombre del negocio</span><input type="text" name="business_name" value="${esc(s.business_name)}"></label>
       <label><span>Mi WhatsApp (a donde escriben los clientes)</span><input type="tel" name="whatsapp" value="${esc(s.whatsapp)}" placeholder="999 999 999"></label>
-      <label><span>Mi descuento de mayorista (%)</span><input type="number" name="cost_discount_pct" min="0" max="100" value="${s.cost_discount_pct}"></label>
+      ${isAffiliate() ? "" : `<label><span>Mi descuento de mayorista (%)</span><input type="number" name="cost_discount_pct" min="0" max="100" value="${s.cost_discount_pct}"></label>`}
+      ${!isAffiliate() && hasTeamFeature() ? `<label><span>Descuento para mis afiliados (%) <small class="muted">— su precio = precio público menos este %</small></span><input type="number" name="affiliate_discount_pct" min="0" max="100" value="${affiliatePct()}"></label>` : ""}
       <label><span>Niveles de descuento que ofrezco (separados por coma)</span><input type="text" name="discount_levels" value="${s.discount_levels.join(", ")}" placeholder="35, 20, 10, 0"></label>
       <label><span>Nombre corto de mi catálogo (va en el enlace)</span><input type="text" name="slug" value="${esc(s.slug || "")}" placeholder="Ej. antony" autocapitalize="none" spellcheck="false" maxlength="30"></label>
       <p class="muted small" style="margin-top:-6px">Tu catálogo se abre en <b>catalogo.html?t=${esc(s.slug || "…")}</b>. Si lo cambias, los enlaces y QR que ya compartiste dejarán de funcionar.</p>
       <p class="error" id="settingsError"></p>
       <button class="btn primary block" type="submit">Guardar ajustes</button>
     </form>
+    ${isAffiliate() ? sponsorCard() : hasTeamFeature() ? teamCard() : ""}
 
     <div class="card">
       <h2 style="font-size:16px">Compartir catálogo</h2>
@@ -862,11 +886,19 @@ function renderSettings() {
     if (!lv.length) { err.textContent = "Indica al menos un nivel de descuento (ej. 35, 20, 10, 0)."; return; }
     const slug = f.slug.value.trim().toLowerCase();
     if (!/^[a-z0-9][a-z0-9-]{1,29}$/.test(slug)) { err.textContent = "El nombre corto solo puede tener minúsculas, números y guiones (2 a 30 caracteres)."; return; }
-    const row = { business_name: f.business_name.value.trim(), whatsapp: f.whatsapp.value.trim(), cost_discount_pct: Number(f.cost_discount_pct.value), discount_levels: lv, slug, updated_at: new Date().toISOString() };
+    const row = { business_name: f.business_name.value.trim(), whatsapp: f.whatsapp.value.trim(), discount_levels: lv, slug, updated_at: new Date().toISOString() };
+    if (f.cost_discount_pct) row.cost_discount_pct = Number(f.cost_discount_pct.value);
+    if (f.affiliate_discount_pct) {
+      const a = Number(f.affiliate_discount_pct.value);
+      if (!Number.isInteger(a) || a < 0 || a > 100) { err.textContent = "El descuento para afiliados debe ser un número entre 0 y 100."; return; }
+      if (a > row.cost_discount_pct && !confirm(`Le darías a tus afiliados ${a}% y tu descuento de mayorista es ${row.cost_discount_pct}%: perderías dinero en cada venta. ¿Guardar igual?`)) return;
+      row.affiliate_discount_pct = a;
+    }
     const { data, error } = await supabase.from("settings").update(row).eq("id", s.id).select().single();
     if (error) { err.textContent = error.code === "23505" ? "Ese nombre corto ya lo usa otro usuario; elige otro." : "No se pudo guardar: " + error.message; return; }
     state.settings = data; toast("Ajustes guardados"); renderSettings();
   });
+  bindTeam();
   $$("[data-copy]").forEach((b) => b.addEventListener("click", async () => {
     try { await navigator.clipboard.writeText(catalogUrl(+b.dataset.copy)); toast("Enlace copiado"); } catch { prompt("Copia el enlace:", catalogUrl(+b.dataset.copy)); }
   }));
@@ -886,6 +918,72 @@ function renderSettings() {
     try { localStorage.removeItem("lastEmail"); } catch {}
     await supabase.auth.signOut(); showLogin();
   });
+}
+
+// ---- Afiliados ----
+/** Afiliado: de quién es el catálogo que vende y a qué precio lo compra */
+function sponsorCard() {
+  const sp = state.sponsor;
+  return `<div class="card">
+      <h2 style="font-size:16px" class="mb">🤝 Mi proveedor</h2>
+      <p class="muted">Vendes el catálogo de <b>${esc(sp?.negocio || "tu proveedor")}</b>: los productos, fotos y precios al público los administra tu proveedor y se actualizan solos.</p>
+      <p class="muted mt">Tu precio de afiliado es el precio público con <b>${sp?.descuento ?? "—"}% de descuento</b>. En la app aparece como "Tu costo" y con él se calcula tu ganancia.</p>
+      ${sp?.whatsapp ? `<a class="btn wa block mt" target="_blank" href="${esc(waLink(sp.whatsapp, "Hola, quiero hacer un pedido de productos:"))}">Pedir productos a mi proveedor</a>` : ""}
+    </div>`;
+}
+
+/** Dueño: sus afiliados con lo que vendieron este mes */
+function teamCard() {
+  const t = state.team;
+  const sum = (k) => round2(t.reduce((a, x) => a + x[k], 0));
+  return `<div class="card">
+      <h2 style="font-size:16px">👥 Mi equipo</h2>
+      <p class="muted mb">Tus afiliados venden tu catálogo con su propio enlace y te compran con <b>${affiliatePct()}% de descuento</b> sobre el precio público.</p>
+      ${t.length ? `<div class="stats">
+        <div class="stat"><div class="label">Vendieron (mes)</div><div class="value">${fmt(sum("ventas"))}</div></div>
+        <div class="stat"><div class="label">Te compran</div><div class="value" style="color:var(--warn)">${fmt(sum("compras"))}</div></div>
+        <div class="stat"><div class="label">Tu ganancia</div><div class="value profit">${fmt(sum("ganancia"))}</div></div>
+      </div>` : ""}
+      ${t.map((a) => `<div class="link-box">
+        <div class="row between">
+          <div class="grow"><div class="bold ellipsis">${esc(a.usuario)} <span class="muted" style="font-weight:400">· ${esc(a.negocio)}</span></div>
+            <div class="muted small">${a.pedidos} pedido${a.pedidos === 1 ? "" : "s"} este mes · vendió ${fmt(a.ventas)}</div>
+            <div class="muted small">Te compra ${fmt(a.compras)} · tu ganancia <span class="profit">${fmt(a.ganancia)}</span></div></div>
+          <div class="btns">
+            <button type="button" class="btn sm" data-team-link="${esc(a.tienda)}">Enlace</button>
+            <button type="button" class="btn sm danger" data-team-rm="${a.afiliado_id}" data-team-name="${esc(a.usuario)}">Quitar</button>
+          </div>
+        </div></div>`).join("")}
+      <form id="formTeam" class="mt">
+        <label><span>Agregar afiliado (su usuario)</span><input type="text" name="usuario" required autocapitalize="none" spellcheck="false" placeholder="Ej. maria"></label>
+        <p class="error" id="teamError"></p>
+        <button class="btn block" type="submit">Agregar a mi equipo</button>
+      </form>
+      <p class="muted small mt">Primero crea su usuario en Supabase (Authentication → Users), igual que el tuyo. Al agregarlo recibe tu catálogo completo; no ve tu costo ni tus clientes.</p>
+    </div>`;
+}
+
+function bindTeam() {
+  $("#formTeam")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const f = e.target; const err = $("#teamError"); err.textContent = "";
+    const btn = $("button[type=submit]", f); btn.disabled = true;
+    const { data, error } = await supabase.rpc("agregar_afiliado", { p_usuario: f.usuario.value });
+    btn.disabled = false;
+    if (error) { err.textContent = error.message; return; }
+    toast(`${data} ya es parte de tu equipo`);
+    await loadAll(); renderSettings();
+  });
+  $$("[data-team-link]").forEach((b) => b.addEventListener("click", async () => {
+    const u = new URL("catalogo.html", location.href); u.searchParams.set("t", b.dataset.teamLink);
+    try { await navigator.clipboard.writeText(u.href); toast("Enlace de su catálogo copiado"); } catch { prompt("Copia el enlace:", u.href); }
+  }));
+  $$("[data-team-rm]").forEach((b) => b.addEventListener("click", async () => {
+    if (!confirm(`¿Quitar a ${b.dataset.teamName} de tu equipo? Conserva sus clientes y pedidos, pero deja de ver tu catálogo.`)) return;
+    const { error } = await supabase.rpc("quitar_afiliado", { p_afiliado: b.dataset.teamRm });
+    if (error) { toast("Error: " + error.message); return; }
+    toast("Afiliado quitado"); await loadAll(); renderSettings();
+  }));
 }
 
 // ---- Código QR ----
