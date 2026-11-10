@@ -178,6 +178,9 @@ main { padding: 16px 16px calc(var(--tab-h) + 96px); max-width: 720px; margin: 0
 .badge.cancelado { background: var(--danger-soft); color: var(--danger); }
 .badge.off { background: var(--line); color: var(--muted); }
 .badge.catalogo { background: var(--info-soft); color: var(--info); }
+.quick { display: flex; gap: 8px; margin-top: 10px; }
+.quick .btn { flex: 1; }
+.notice { display: block; width: 100%; text-align: left; font: inherit; font-size: 13px; line-height: 1.4; cursor: pointer; background: var(--warn-soft); color: var(--warn); border: 1px solid var(--warn); border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 12px; }
 
 .chips { display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 6px; margin-bottom: 8px; scrollbar-width: none; }
 .chips::-webkit-scrollbar { display: none; }

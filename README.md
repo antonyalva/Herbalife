@@ -76,8 +76,11 @@ Para sumar un afiliado:
 
 El afiliado entra con su usuario, pone su WhatsApp en Ajustes y comparte su propio enlace (`catalogo.html?t=maria`); los pedidos de ese enlace le llegan a él. En **Mi equipo** ves, por afiliado y por mes, cuánto vendió, cuánto te compra a precio de afiliado y tu ganancia. Solo hay un nivel: un afiliado no puede tener afiliados.
 
+### Pago y entrega de cada pedido
+Cada pedido tiene dos marcas independientes: **cobrado** y **entregado** (puedes cobrar por adelantado y entregar después, o al revés). Se marcan con un toque desde la tarjeta del pedido; cuando tiene ambas queda como *Completado*. "Por cobrar" suma todos los pedidos sin pagar.
+
 ### 4. Compartir el catálogo con clientes
-En **Ajustes → Compartir catálogo** hay un enlace por cada nivel de descuento. Envíale a cada cliente el que le corresponde; verá los productos con *sus* precios y podrá armar su pedido y enviártelo por WhatsApp (al número que pongas en Ajustes).
+En **Ajustes → Compartir catálogo** hay un enlace por cada nivel de descuento. Cada enlace de descuento lleva un **código secreto** (`&p=...`): quien no lo tenga solo ve el precio público, y no sirve cambiar números en el enlace (requiere `supabase/migracion-07-enlaces-seguros-pago-entrega.sql`; los enlaces antiguos con `&d=` pasan a mostrar precio público). Envíale a cada cliente el que le corresponde; verá los productos con *sus* precios y podrá armar su pedido y enviártelo por WhatsApp (al número que pongas en Ajustes).
 
 ## Probar en la computadora
 Desde la carpeta del proyecto:

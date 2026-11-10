@@ -31,7 +31,29 @@ const state = {
   draft: null,
 };
 
-const STATUS_LABEL = { pendiente: "Pendiente", entregado: "Entregado", pagado: "Pagado", cancelado: "Cancelado" };
+// Cada pedido tiene dos marcas independientes (pagado / entregado); "cancelado" va aparte en status
+const isCancelled = (o) => o.status === "cancelado";
+const isDone = (o) => o.paid && o.delivered;
+const ORDER_FILTERS = {
+  todos: ["Todos", () => true],
+  cobrar: ["Por cobrar", (o) => !isCancelled(o) && !o.paid],
+  entregar: ["Por entregar", (o) => !isCancelled(o) && !o.delivered],
+  completo: ["Completados", (o) => !isCancelled(o) && isDone(o)],
+  cancelado: ["Cancelados", isCancelled],
+};
+function orderBadges(o) {
+  if (isCancelled(o)) return `<span class="badge cancelado">Cancelado</span>`;
+  if (isDone(o)) return `<span class="badge pagado">✓ Completado</span>`;
+  return `<span class="badge ${o.paid ? "pagado" : "pendiente"}">${o.paid ? "Pagado" : "Por cobrar"}</span> ` +
+    `<span class="badge ${o.delivered ? "entregado" : "pendiente"}">${o.delivered ? "Entregado" : "Por entregar"}</span>`;
+}
+/** Guarda un cambio de pago / entrega / cancelación; la base de datos recalcula el estado */
+async function updateOrderState(o, patch) {
+  const { data, error } = await supabase.from("orders").update(patch).eq("id", o.id).select("status, paid, delivered").single();
+  if (error) { toast("Error: " + error.message); return false; }
+  Object.assign(o, data);
+  return true;
+}
 
 // ---------- arranque ----------
 async function init() {
@@ -231,6 +253,7 @@ async function loadAll() {
 const numProduct = (p) => ({ ...p, public_price: Number(p.public_price), cost: p.cost == null ? null : Number(p.cost), prices: p.prices || {} });
 const numOrder = (o) => ({
   ...o, total: Number(o.total), cost: Number(o.cost),
+  paid: o.paid ?? o.status === "pagado", delivered: o.delivered ?? ["entregado", "pagado"].includes(o.status),
   order_items: (o.order_items || []).map((i) => ({ ...i, public_price: Number(i.public_price), unit_price: Number(i.unit_price), unit_cost: Number(i.unit_cost) })),
 });
 
@@ -310,22 +333,38 @@ function renderOrders() {
   });
   const ventas = round2(thisMonth.reduce((a, o) => a + o.total, 0));
   const ganancia = round2(thisMonth.reduce((a, o) => a + (o.total - o.cost), 0));
-  const porCobrar = round2(state.orders.filter((o) => o.status === "pendiente" || o.status === "entregado").reduce((a, o) => a + o.total, 0));
+  const porCobrar = round2(state.orders.filter(ORDER_FILTERS.cobrar[1]).reduce((a, o) => a + o.total, 0));
 
-  const list = state.orders.filter((o) => state.orderFilter === "todos" || o.status === state.orderFilter);
-  const filters = ["todos", "pendiente", "entregado", "pagado", "cancelado"];
+  if (!ORDER_FILTERS[state.orderFilter]) state.orderFilter = "todos";
+  const list = state.orders.filter(ORDER_FILTERS[state.orderFilter][1]);
+  const count = (f) => (f === "cobrar" || f === "entregar") ? state.orders.filter(ORDER_FILTERS[f][1]).length : 0;
 
   $("#view").innerHTML = `
+    ${state.settings?.whatsapp ? "" : `<button class="notice" id="btnNeedWa">⚠️ <b>Falta tu número de WhatsApp.</b> Sin él, los pedidos de tu catálogo no te llegan por WhatsApp. <u>Completar ahora</u></button>`}
     <div class="stats">
       <div class="stat"><div class="label">Ventas del mes</div><div class="value">${fmt(ventas)}</div></div>
       <div class="stat"><div class="label">Ganancia</div><div class="value profit">${fmt(ganancia)}</div></div>
       <div class="stat"><div class="label">Por cobrar</div><div class="value" style="color:var(--warn)">${fmt(porCobrar)}</div></div>
     </div>
-    <div class="chips">${filters.map((f) => `<button class="chip ${state.orderFilter === f ? "active" : ""}" data-f="${f}">${f === "todos" ? "Todos" : STATUS_LABEL[f]}</button>`).join("")}</div>
+    <div class="chips">${Object.keys(ORDER_FILTERS).map((f) => `<button class="chip ${state.orderFilter === f ? "active" : ""}" data-f="${f}">${ORDER_FILTERS[f][0]}${count(f) ? ` (${count(f)})` : ""}</button>`).join("")}</div>
     ${list.length ? list.map(orderCard).join("") : `<div class="empty"><div class="big">🧾</div>No hay pedidos${state.orderFilter !== "todos" ? " con este estado" : ". Toca + para crear el primero"}.</div>`}
   `;
   $$(".chip", $("#view")).forEach((c) => c.addEventListener("click", () => { state.orderFilter = c.dataset.f; renderOrders(); }));
   $$("[data-order]", $("#view")).forEach((c) => c.addEventListener("click", () => openOrderDetail(c.dataset.order)));
+  // Botones rápidos de la tarjeta: cobrar / entregar sin abrir el pedido
+  $$("[data-quick]", $("#view")).forEach((b) => b.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    const o = state.orders.find((x) => x.id === b.dataset.id);
+    if (!o) return;
+    b.disabled = true;
+    const paid = b.dataset.quick === "paid";
+    if (await updateOrderState(o, paid ? { paid: true } : { delivered: true })) toast(`Pedido${o.number ? " #" + o.number : ""} ${paid ? "cobrado" : "entregado"}`);
+    renderOrders();
+  }));
+  $("#btnNeedWa")?.addEventListener("click", () => {
+    $('.tabbar button[data-view="ajustes"]').click();
+    const i = $("#formSettings [name=whatsapp]"); i?.scrollIntoView({ block: "center" }); i?.focus();
+  });
 }
 
 const referrerName = (o) => o.referred_by ? (state.customers.find((c) => c.id === o.referred_by)?.name || "cliente eliminado") : "";
@@ -341,10 +380,14 @@ function orderCard(o) {
       </div>
       <div class="right">
         <div class="price">${fmt(o.total)}</div>
-        <span class="badge ${o.status}">${STATUS_LABEL[o.status]}</span>
+        <div class="muted small">Ganancia: <span class="profit">${fmt(o.total - o.cost)}</span></div>
       </div>
     </div>
-    <div class="muted small mt" style="margin-top:6px">Ganancia: <span class="profit">${fmt(o.total - o.cost)}</span></div>
+    <div style="margin-top:8px">${orderBadges(o)}</div>
+    ${isCancelled(o) || isDone(o) ? "" : `<div class="quick">
+      ${o.paid ? "" : `<button type="button" class="btn sm" data-quick="paid" data-id="${o.id}">💵 Marcar cobrado</button>`}
+      ${o.delivered ? "" : `<button type="button" class="btn sm" data-quick="delivered" data-id="${o.id}">📦 Marcar entregado</button>`}
+    </div>`}
   </div>`;
 }
 
@@ -468,7 +511,7 @@ function openOrderDetail(id) {
         ${phone ? `<div class="muted">📱 ${esc(phone)}</div>` : ""}
         ${o.referred_by ? `<div class="muted">🔗 Referido por <b>${esc(referrerName(o))}</b></div>` : ""}
       </div>
-      <span class="badge ${o.status}">${STATUS_LABEL[o.status]}</span>
+      <div class="right">${orderBadges(o)}</div>
     </div>
     ${!cust && o.source === "catalogo" ? `<button class="btn sm block mb" id="btnSaveAsCustomer">＋ Guardar "${esc(o.customer_name)}" como cliente</button>` : ""}
     ${o.order_items.map((i) => `<div class="item-line">
@@ -480,20 +523,22 @@ function openOrderDetail(id) {
       <div class="row between grand"><span>Total</span><span>${fmt(o.total)}</span></div>
     </div>
     ${o.note ? `<p class="muted mt">📝 ${esc(o.note)}</p>` : ""}
-    <label class="mt"><span>Cambiar estado</span>
-      <select id="detailStatus">${Object.entries(STATUS_LABEL).map(([k, v]) => `<option value="${k}" ${k === o.status ? "selected" : ""}>${v}</option>`).join("")}</select>
-    </label>
+    ${isCancelled(o) ? `<button class="btn block mt" id="btnReactivate">Reactivar pedido</button>` : `<div class="actions">
+      <button class="btn ${o.paid ? "primary" : ""}" id="btnTogglePaid">${o.paid ? "✓ Pagado" : "💵 Marcar cobrado"}</button>
+      <button class="btn ${o.delivered ? "primary" : ""}" id="btnToggleDelivered">${o.delivered ? "✓ Entregado" : "📦 Marcar entregado"}</button>
+    </div>
+    <p class="muted small" style="margin-top:6px">Pago y entrega se marcan por separado. Toca de nuevo para desmarcar.</p>`}
+    <button class="btn wa block mt" id="btnWaOrder">Enviar por WhatsApp</button>
     <div class="actions">
-      <button class="btn wa" id="btnWaOrder">Enviar por WhatsApp</button>
+      ${isCancelled(o) ? "" : `<button class="btn" id="btnCancelOrder">Cancelar pedido</button>`}
       <button class="btn danger" id="btnDeleteOrder">Eliminar</button>
     </div>`;
 
-  $("#detailStatus").addEventListener("change", async (e) => {
-    const status = e.target.value;
-    const { error } = await supabase.from("orders").update({ status }).eq("id", o.id);
-    if (error) { toast("Error: " + error.message); return; }
-    o.status = status; toast("Estado actualizado"); openOrderDetail(id); renderOrders();
-  });
+  const change = async (patch, msg) => { if (await updateOrderState(o, patch)) { toast(msg); openOrderDetail(id); renderOrders(); } };
+  $("#btnTogglePaid")?.addEventListener("click", () => change({ paid: !o.paid }, o.paid ? "Marcado como por cobrar" : "Pedido cobrado"));
+  $("#btnToggleDelivered")?.addEventListener("click", () => change({ delivered: !o.delivered }, o.delivered ? "Marcado como por entregar" : "Pedido entregado"));
+  $("#btnCancelOrder")?.addEventListener("click", () => { if (confirm("¿Cancelar este pedido? Deja de contar en tus ventas; puedes reactivarlo después.")) change({ status: "cancelado" }, "Pedido cancelado"); });
+  $("#btnReactivate")?.addEventListener("click", () => change({ status: "pendiente" }, "Pedido reactivado"));
   $("#btnWaOrder").addEventListener("click", () => {
     const lines = o.order_items.map((i) => `• ${i.qty} × ${i.product_name} — ${fmt(i.qty * i.unit_price)}`);
     const msg = `Hola ${o.customer_name}, este es tu pedido${o.number ? ` #${o.number}` : ""}${state.settings.business_name ? " de " + state.settings.business_name : ""}:\n${lines.join("\n")}\n\n*Total: ${fmt(o.total)}*${o.note ? "\n" + o.note : ""}\n¡Gracias!`;
@@ -525,7 +570,7 @@ function renderCustomers() {
   const q = norm(state.search.clientes);
   const list = state.customers.filter((c) => !q || norm(c.name).includes(q) || c.phone.includes(q));
   const pending = {};
-  for (const o of state.orders) if (o.status === "pendiente" || o.status === "entregado") pending[o.customer_id] = (pending[o.customer_id] || 0) + o.total;
+  for (const o of state.orders) if (!isCancelled(o) && !o.paid) pending[o.customer_id] = (pending[o.customer_id] || 0) + o.total;
   const refs = referralStats();
 
   $("#view").innerHTML = `
@@ -813,7 +858,11 @@ $("#btnDeleteProduct").addEventListener("click", async () => {
 function catalogUrl(d) {
   const base = new URL("catalogo.html", location.href);
   if (state.settings?.slug) base.searchParams.set("t", state.settings.slug);
-  if (d > 0) base.searchParams.set("d", d);
+  if (d > 0) {
+    // Código secreto del nivel: quien no lo tenga solo ve el precio público (sin la migración 07 se usa el número, como antes)
+    const code = state.settings?.level_codes?.[String(d)];
+    if (code) base.searchParams.set("p", code); else base.searchParams.set("d", d);
+  }
   return base.href;
 }
 
@@ -846,7 +895,7 @@ function renderSettings() {
             <button class="btn sm primary" data-share="${d}">Enviar</button>
           </div>
         </div></div>`).join("")}
-      <p class="muted small mt">Consejo: comparte públicamente solo el enlace de precio público; los de descuento envíalos a cada cliente por separado.</p>
+      <p class="muted small mt">Consejo: comparte públicamente solo el enlace de precio público; los de descuento envíalos a cada cliente por separado. Cada enlace de descuento lleva un código secreto: quien no lo tenga solo ve el precio público.</p>
       <p class="muted small">🔗 Cada cliente tiene además su <b>enlace personal para recomendar</b> (en su ficha, pestaña Clientes). Los pedidos que lleguen por ese enlace aparecen como "Referido por …" y en su ficha ves cuánto ha traído, para que decidas su premio.</p>
       <a class="btn block mt" href="${esc(catalogUrl(0))}" target="_blank">Ver catálogo como cliente</a>
     </div>

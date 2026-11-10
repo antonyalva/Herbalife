@@ -13,6 +13,7 @@ let settings = null, products = [], discount = 0, category = "", query = "";
 const tienda = (new URLSearchParams(location.search).get("t") || "").trim().toLowerCase();
 let ref = new URLSearchParams(location.search).get("ref") || "";
 try { if (ref) localStorage.setItem("ref", ref); else ref = localStorage.getItem("ref") || ""; } catch {}
+const priceCode = (new URLSearchParams(location.search).get("p") || "").trim(); // código secreto del nivel de descuento
 const cart = new Map(); // product_id -> qty
 
 $$("dialog [data-close]").forEach((b) => b.addEventListener("click", () => b.closest("dialog").close()));
@@ -36,8 +37,13 @@ async function init() {
   products = p.data.map((x) => ({ ...x, public_price: Number(x.public_price), prices: x.prices || {} }));
   try { localStorage.setItem("businessName", settings.business_name || ""); } catch {}
 
-  const d = Number(new URLSearchParams(location.search).get("d"));
-  discount = settings.discount_levels.includes(d) ? d : 0;
+  // El descuento sale del código secreto del enlace (?p=CODIGO); el servidor dice a qué nivel corresponde.
+  // El número escrito en el enlace (?d=35) ya no se acepta: cualquiera podía cambiarlo.
+  if (priceCode) {
+    const lv = await supabase.rpc("nivel_catalogo", { p_tienda: tienda || null, p_codigo: priceCode });
+    const d = lv.error ? 0 : Number(lv.data) || 0;
+    discount = settings.discount_levels.includes(d) ? d : 0;
+  }
 
   document.title = settings.business_name;
   $("#title").textContent = settings.business_name;
@@ -183,6 +189,7 @@ $("#btnSend").addEventListener("click", async () => {
     p_items: items.map((i) => ({ product_id: i.id, qty: i.qty })),
     p_ref: ref || null,
     p_tienda: tienda || null,
+    p_codigo: priceCode || null,
   });
   if (error) console.error("No se pudo registrar el pedido:", error.message);
   else number = data;
@@ -192,15 +199,17 @@ $("#btnSend").addEventListener("click", async () => {
     items.map((i) => `• ${i.qty} × ${i.name} — ${fmt(i.subtotal)}`).join("\n") +
     `\n\n*Total: ${fmt(total)}*` + (discount > 0 ? ` (con ${discount}% dto.)` : "") +
     (note ? `\nNota: ${note}` : "") + (phone ? `\nMi celular: ${phone}` : "");
-  window.open(waLink(settings.whatsapp, msg), "_blank");
+  // Si el negocio aún no configuró su WhatsApp no se abre un chat sin destinatario: el pedido ya quedó en su app
+  const hasWa = !!String(settings.whatsapp || "").replace(/\D/g, "");
+  if (hasWa) window.open(waLink(settings.whatsapp, msg), "_blank");
 
   if (number) {
     cart.clear(); renderGrid();
     $("#dlgCheckout").close();
-    toast(`Pedido #${number} registrado. ¡Gracias!`);
+    toast(hasWa ? `Pedido #${number} registrado. ¡Gracias!` : `Pedido #${number} registrado. Te contactaremos pronto para coordinar la entrega. ¡Gracias!`);
   } else {
     btn.disabled = false;
-    toast("No se pudo registrar el pedido automáticamente; envíalo por WhatsApp.");
+    toast(hasWa ? "No se pudo registrar el pedido automáticamente; envíalo por WhatsApp." : "No se pudo enviar el pedido. Inténtalo de nuevo en un momento.");
   }
 });
 
